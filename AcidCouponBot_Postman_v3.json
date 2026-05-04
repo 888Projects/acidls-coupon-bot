@@ -1,0 +1,557 @@
+{
+  "info": {
+    "name": "AcidCouponBot — Complete v3",
+    "description": "Full collection: Randgo API v2.8 + Bot Admin API.\n\nSETUP (one time):\n1. Set RANDGO_USERNAME and RANDGO_PASSWORD in collection variables\n2. Run '01 Login' — SessionToken auto-saved\n3. Run '02 AccountDetailsGet' — GUIDs auto-saved\n4. Run '03 VouchersGet' — VoucherGuids auto-saved\n\nBot Admin endpoints use Basic Auth automatically (inherited from collection).\nRandgo endpoints pass SessionToken in JSON body.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      { "key": "username", "value": "{{BOT_ADMIN_USER}}", "type": "string" },
+      { "key": "password", "value": "{{BOT_ADMIN_PASS}}", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "BASE_URL",               "value": "https://api.randgoqa.dev",              "type": "string" },
+    { "key": "RANDGO_USERNAME",         "value": "ACID",                                  "type": "string" },
+    { "key": "RANDGO_PASSWORD",         "value": "rqMzTewCxxvUYWtY",                      "type": "string" },
+    { "key": "randgo_session_token",    "value": "",                                       "type": "string" },
+    { "key": "randgo_account_guid",     "value": "",                                       "type": "string" },
+    { "key": "client_scheme_guid",      "value": "1E37B9EC-AB2C-4E17-A7F9-AAEB975949F9",  "type": "string" },
+    { "key": "member_identifier_guid",  "value": "56583EE8-DC7D-4C7F-83DA-19B5C52E03CF",  "type": "string" },
+    { "key": "voucher_guid_1",          "value": "",                                       "type": "string" },
+    { "key": "voucher_guid_2",          "value": "",                                       "type": "string" },
+    { "key": "voucher_guid_3",          "value": "",                                       "type": "string" },
+    { "key": "voucher_guid_4",          "value": "",                                       "type": "string" },
+    { "key": "voucher_guid_5",          "value": "",                                       "type": "string" },
+    { "key": "batch_guid",              "value": "",                                       "type": "string" },
+    { "key": "test_phone",              "value": "27831000001",                            "type": "string" },
+    { "key": "BOT_BASE_URL",            "value": "http://localhost:8080",                  "type": "string" },
+    { "key": "BOT_ADMIN_USER",          "value": "admin",                                  "type": "string" },
+    { "key": "BOT_ADMIN_PASS",          "value": "AcidAdmin@2024",                         "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "🔐 01 — Randgo Account",
+      "item": [
+        {
+          "name": "01 Login",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.Info && res.Info.SessionToken) {",
+            "  pm.collectionVariables.set('randgo_session_token', res.Info.SessionToken);",
+            "  pm.collectionVariables.set('randgo_account_guid', res.Info.AccountGuid || '');",
+            "  console.log('✅ SessionToken saved:', res.Info.SessionToken);",
+            "} else { console.error('❌ Login failed:', JSON.stringify(res)); }",
+            "pm.test('Success is true', () => pm.expect(res.Success).to.be.true);",
+            "pm.test('SessionToken present', () => pm.expect(res.Info.SessionToken).to.be.a('string'));"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Account/Login", "host": ["{{BASE_URL}}"], "path": ["api","Account","Login"] },
+            "body": { "mode": "raw", "raw": "{\n  \"Username\": \"{{RANDGO_USERNAME}}\",\n  \"Password\": \"{{RANDGO_PASSWORD}}\"\n}" }
+          },
+          "description": "Path: api/Account/Login\nSchedule: Once per 24 hours or on token expiry.\nBLOCKING: >1 call/day = 2hr suspension on Live, 5min on QA.\nAuto-saves SessionToken."
+        },
+        {
+          "name": "02 AccountDetailsGet",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('Success is true', () => pm.expect(res.Success).to.be.true);",
+            "if (res.Info && res.Info.ClientSchemes && res.Info.ClientSchemes.length > 0) {",
+            "  const scheme = res.Info.ClientSchemes[0];",
+            "  pm.collectionVariables.set('client_scheme_guid', scheme.ClientSchemeGuid);",
+            "  console.log('✅ ClientSchemeGuid:', scheme.ClientSchemeGuid);",
+            "  if (scheme.MemberIdentifiers && scheme.MemberIdentifiers.length > 0) {",
+            "    pm.collectionVariables.set('member_identifier_guid', scheme.MemberIdentifiers[0].ClientSchemeMemberIdentifierGuid);",
+            "    console.log('✅ MemberIdentifierGuid:', scheme.MemberIdentifiers[0].ClientSchemeMemberIdentifierGuid);",
+            "  }",
+            "}"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Account/AccountDetailsGet", "host": ["{{BASE_URL}}"], "path": ["api","Account","AccountDetailsGet"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\"\n}" }
+          },
+          "description": "Path: api/Account/AccountDetailsGet\nSchedule: Once per 24 hours, cache result.\nAuto-saves ClientSchemeGuid and MemberIdentifierGuid."
+        }
+      ]
+    },
+
+    {
+      "name": "🎟️ 02 — Randgo Vouchers",
+      "item": [
+        {
+          "name": "03 VouchersGet",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('Success is true', () => pm.expect(res.Success).to.be.true);",
+            "if (res.Vendors) {",
+            "  let count = 0;",
+            "  res.Vendors.forEach(vendor => {",
+            "    console.log('Vendor:', vendor.Name, vendor.Guid);",
+            "    (vendor.Vouchers || []).forEach((v, i) => {",
+            "      console.log('  Voucher['+i+']:', v.Name, '| Guid:', v.Guid, '| Type:', v.VoucherType);",
+            "      if (count < 5) { pm.collectionVariables.set('voucher_guid_'+(count+1), v.Guid); count++; }",
+            "    });",
+            "  });",
+            "  console.log('✅', count, 'VoucherGuids saved');",
+            "}"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Voucher/VouchersGet", "host": ["{{BASE_URL}}"], "path": ["api","Voucher","VouchersGet"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\"\n}" }
+          },
+          "description": "Path: api/Voucher/VouchersGet\nSchedule: 1st of month.\nBLOCKING: >10/week = suspension.\nAuto-saves first 5 VoucherGuids."
+        },
+        {
+          "name": "04 VoucherRedemptionTypesGet",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('Success is true', () => pm.expect(res.Success).to.be.true);",
+            "if (res.Types) { console.log('Redemption types:', JSON.stringify(res.Types)); }"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Voucher/VoucherRedemptionTypesGet", "host": ["{{BASE_URL}}"], "path": ["api","Voucher","VoucherRedemptionTypesGet"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\"\n}" }
+          },
+          "description": "Path: api/Voucher/VoucherRedemptionTypesGet\nNote: doc has typo 'api/Vocuher/...' — correct path is 'api/Voucher/...'\nUse this to confirm valid RedemptionType values for CouponBasketCheckout."
+        },
+        {
+          "name": "05 CodesAvailability",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Voucher/CodesAvailiblity", "host": ["{{BASE_URL}}"], "path": ["api","Voucher","CodesAvailiblity"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"ShowStockOnlyVouchers\": false\n}" }
+          },
+          "description": "Path: /api/Voucher/CodesAvailiblity (note: spelling from doc)\nBLOCKING: >1/30min = suspension."
+        },
+        {
+          "name": "06 CodesGet (nightly fallback cache)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Voucher/CodesGet", "host": ["{{BASE_URL}}"], "path": ["api","Voucher","CodesGet"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"OfferingGuidList\": [\n    \"{{voucher_guid_1}}\",\n    \"{{voucher_guid_2}}\",\n    \"{{voucher_guid_3}}\",\n    \"{{voucher_guid_4}}\",\n    \"{{voucher_guid_5}}\"\n  ],\n  \"BatchNo\": \"\",\n  \"NewOnly\": true\n}" }
+          },
+          "description": "Path: api/Voucher/CodesGet\nBLOCKING: >1/10min = suspension.\nCodes are sensitive — never expose publicly."
+        }
+      ]
+    },
+
+    {
+      "name": "🛒 03 — Randgo Coupon Basket",
+      "item": [
+        {
+          "name": "07 CouponBasketCheckout ⚡ LIVE ISSUANCE",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('Checkout successful', () => pm.expect(res.Success).to.be.true);",
+            "if (res.Basket) {",
+            "  console.log('Basket GUID:', res.Basket.Guid);",
+            "  if (res.Basket.Codes) {",
+            "    console.log('\\n✅ CODES ISSUED:');",
+            "    res.Basket.Codes.forEach((c, i) => console.log('  '+(i+1)+'.', c.IsssuedCode, '| Expires:', c.CancelDate));",
+            "  }",
+            "  if (res.Basket.Coupons) {",
+            "    res.Basket.Coupons.forEach(c => {",
+            "      if (c.IssueFailed) console.error('❌ Coupon failed:', c.VoucherGuid, c.RedemptionTemplate);",
+            "    });",
+            "  }",
+            "}"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Voucher/Coupon/Basket/Checkout", "host": ["{{BASE_URL}}"], "path": ["api","Voucher","Coupon","Basket","Checkout"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"PrimaryKeyName\": \"Cellphone\",\n  \"PrimaryKeyValue\": \"{{test_phone}}\",\n  \"RedemptionType\": \"WebService\",\n  \"IssueExistingBasket\": false,\n  \"Coupons\": [\n    \"{{voucher_guid_1}}\",\n    \"{{voucher_guid_2}}\",\n    \"{{voucher_guid_3}}\",\n    \"{{voucher_guid_4}}\",\n    \"{{voucher_guid_5}}\"\n  ],\n  \"AlternativeCellphone\": \"\",\n  \"AlternativeEmail\": \"\"\n}" }
+          },
+          "description": "Path: api/Voucher/Coupon/Basket/Checkout\nThis is the PRIMARY call per customer claim.\nIssueExistingBasket=false means we manage our own basket.\nRedemptionType: confirm correct value from request 04."
+        },
+        {
+          "name": "08 CouponBasketHistory (after hours only)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Voucher/Coupon/BasketHistoryGet", "host": ["{{BASE_URL}}"], "path": ["api","Voucher","Coupon","BasketHistoryGet"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"PrimaryKeyName\": \"Cellphone\",\n  \"PrimaryKeyValue\": \"{{test_phone}}\"\n}" }
+          },
+          "description": "Path: api/Voucher/Coupon/BasketHistoryGet\nBLOCKING: Only 23:00–05:00."
+        },
+        {
+          "name": "09 Issued Stats (after hours only)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Voucher/Issued", "host": ["{{BASE_URL}}"], "path": ["api","Voucher","Issued"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"ChannelGuid\": \"\",\n  \"DateFrom\": \"2025-01-01\",\n  \"DateTo\": \"2025-12-31\"\n}" }
+          },
+          "description": "Path: api/Voucher/Issued\nBLOCKING: Only 23:00–05:00. Calls outside this window = suspension."
+        }
+      ]
+    },
+
+    {
+      "name": "👤 04 — Randgo Members",
+      "item": [
+        {
+          "name": "10 PrimaryKeyGet",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Member/PrimaryKeyGet", "host": ["{{BASE_URL}}"], "path": ["api","Member","PrimaryKeyGet"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\"\n}" }
+          },
+          "description": "Path: api/Member/PrimaryKeyGet\nConfirm valid PrimaryKeyName values. Look for 'Cellphone' in response."
+        },
+        {
+          "name": "11 Member Import",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('Import queued', () => pm.expect(res.Success).to.be.true);",
+            "if (res.Batch) {",
+            "  pm.collectionVariables.set('batch_guid', res.Batch.Guid);",
+            "  console.log('✅ BatchGuid saved:', res.Batch.Guid);",
+            "  console.log('Status:', res.Batch.Status);",
+            "  console.log('RowCount:', res.Batch.RowCount);",
+            "}"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Member/Import", "host": ["{{BASE_URL}}"], "path": ["api","Member","Import"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"ClientSchemeGuid\": \"{{client_scheme_guid}}\",\n  \"PrimaryKeyName\": \"Cellphone\",\n  \"ClientSchemMemberIdentifierGuid\": \"{{member_identifier_guid}}\",\n  \"Members\": [\n    {\n      \"UniqueUserKey\": \"{{test_phone}}\",\n      \"Cellphone\": \"{{test_phone}}\",\n      \"Active\": true,\n      \"Registered\": true\n    }\n  ]\n}" }
+          },
+          "description": "Path: api/Member/Import\nRegisters a customer under ACID's ClientScheme.\nNote: ClientSchemMemberIdentifierGuid has one M (doc typo — use as-is).\nBatchGuid auto-saved for polling."
+        },
+        {
+          "name": "12 Batch Status (poll)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('Batch retrieved', () => pm.expect(res.Success).to.be.true);",
+            "if (res.Batch) {",
+            "  console.log('Status:', res.Batch.Status);",
+            "  console.log('Progress:', res.Batch.Progress);",
+            "  console.log('Imported:', res.Batch.ImportedRowCount, '/', res.Batch.RowCount);",
+            "  if (res.Batch.FailedRowCount > 0) console.error('Failed:', res.Batch.FailedRowCount);",
+            "  res.Batch.Status === 'Completed'",
+            "    ? console.log('✅ Import COMPLETE — stop polling')",
+            "    : console.log('⏳ Still importing — wait 20s then re-run');",
+            "}"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Member/Import/Batch/GetByBatchGuid", "host": ["{{BASE_URL}}"], "path": ["api","Member","Import","Batch","GetByBatchGuid"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"BatchGuid\": \"{{batch_guid}}\"\n}" }
+          },
+          "description": "Path: api/Member/Import/Batch/GetByBatchGuid\nBLOCKING: Max 1 call per 20s per batch.\nMust STOP polling when Status = Completed."
+        },
+        {
+          "name": "13 Member Validate",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Member/Validate", "host": ["{{BASE_URL}}"], "path": ["api","Member","Validate"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"PrimaryKeyName\": \"Cellphone\",\n  \"PrimaryKeyValue\": \"{{test_phone}}\"\n}" }
+          },
+          "description": "Path: api/Member/Validate\nBLOCKING: Max 1/min per member."
+        }
+      ]
+    },
+
+    {
+      "name": "🤖 05 — Bot Admin API",
+      "description": "All requests inherit Basic Auth from collection: admin / AcidAdmin@2024",
+      "item": [
+        {
+          "name": "14 Health Check (public)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/health", "host": ["{{BOT_BASE_URL}}"], "path": ["api","health"] }
+          }
+        },
+        {
+          "name": "15 Dashboard Stats",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "GET",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/stats", "host": ["{{BOT_BASE_URL}}"], "path": ["api","stats"] }
+          }
+        },
+        {
+          "name": "16 Get Campaigns",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "GET",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/campaigns", "host": ["{{BOT_BASE_URL}}"], "path": ["api","campaigns"] }
+          }
+        },
+        {
+          "name": "17 Create Campaign",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BOT_BASE_URL}}/api/campaigns", "host": ["{{BOT_BASE_URL}}"], "path": ["api","campaigns"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Shoprite Grocery Promo — May 2025\",\n  \"retailerName\": \"Shoprite\",\n  \"retailerEmoji\": \"🛒\",\n  \"bundleSize\": 5,\n  \"active\": true,\n  \"lowStockThreshold\": 10,\n  \"expiryDate\": \"2025-12-31\",\n  \"description\": \"Exclusive grocery coupons — scan QR to claim!\"\n}" }
+          }
+        },
+        {
+          "name": "18 Activate Campaign",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "PUT",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/campaigns/1/activate", "host": ["{{BOT_BASE_URL}}"], "path": ["api","campaigns","1","activate"] }
+          }
+        },
+        {
+          "name": "19 Deactivate Campaign",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "PUT",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/campaigns/1/deactivate", "host": ["{{BOT_BASE_URL}}"], "path": ["api","campaigns","1","deactivate"] }
+          }
+        },
+        {
+          "name": "20 Update Campaign",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BOT_BASE_URL}}/api/campaigns/1", "host": ["{{BOT_BASE_URL}}"], "path": ["api","campaigns","1"] },
+            "body": { "mode": "raw", "raw": "{\n  \"retailerName\": \"Shoprite\",\n  \"retailerEmoji\": \"🛒\",\n  \"bundleSize\": 5\n}" }
+          }
+        },
+        {
+          "name": "21 Delete Campaign",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "DELETE",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/campaigns/1", "host": ["{{BOT_BASE_URL}}"], "path": ["api","campaigns","1"] }
+          }
+        },
+        {
+          "name": "22 Get Vouchers (bot cache)",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "GET",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/vouchers", "host": ["{{BOT_BASE_URL}}"], "path": ["api","vouchers"] }
+          }
+        },
+        {
+          "name": "23 Get Active Vouchers",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "GET",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/vouchers/active", "host": ["{{BOT_BASE_URL}}"], "path": ["api","vouchers","active"] }
+          }
+        },
+        {
+          "name": "24 Toggle Voucher in Bundle",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "PUT",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/vouchers/1/toggle", "host": ["{{BOT_BASE_URL}}"], "path": ["api","vouchers","1","toggle"] }
+          }
+        },
+        {
+          "name": "25 Sync Vouchers from Randgo",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "POST",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/sync/vouchers", "host": ["{{BOT_BASE_URL}}"], "path": ["api","sync","vouchers"] }
+          },
+          "description": "Triggers VouchersGet from Randgo and caches result. Max 10/week."
+        },
+        {
+          "name": "26 Sync Code Cache",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "POST",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/sync/codes", "host": ["{{BOT_BASE_URL}}"], "path": ["api","sync","codes"] }
+          },
+          "description": "Triggers CodesGet and stores fallback pool. Max 1/10min."
+        },
+        {
+          "name": "27 Get All Redemptions",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "GET",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/redemptions?limit=100", "host": ["{{BOT_BASE_URL}}"], "path": ["api","redemptions"], "query": [{"key":"limit","value":"100"}] }
+          }
+        },
+        {
+          "name": "28 Get Redemptions by Phone",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "GET",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/redemptions/phone/{{test_phone}}", "host": ["{{BOT_BASE_URL}}"], "path": ["api","redemptions","phone","{{test_phone}}"] }
+          }
+        },
+        {
+          "name": "29 Get Failed Sends",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "GET",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/redemptions/failed", "host": ["{{BOT_BASE_URL}}"], "path": ["api","redemptions","failed"] }
+          }
+        },
+        {
+          "name": "30 Randgo Connection Status",
+          "request": {
+            "auth": { "type": "inherit" },
+            "method": "GET",
+            "url": { "raw": "{{BOT_BASE_URL}}/api/randgo/status", "host": ["{{BOT_BASE_URL}}"], "path": ["api","randgo","status"] }
+          }
+        },
+        {
+          "name": "31 Simulate WhatsApp Webhook — Coupon",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Webhook accepted', () => pm.expect(pm.response.code).to.be.oneOf([200,204]));",
+            "console.log('Response:', pm.response.text().substring(0,500));"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BOT_BASE_URL}}/webhook", "host": ["{{BOT_BASE_URL}}"], "path": ["webhook"] },
+            "body": { "mode": "raw", "raw": "{\n  \"entry\": [{\n    \"changes\": [{\n      \"value\": {\n        \"messages\": [{\n          \"type\": \"text\",\n          \"from\": \"{{test_phone}}\",\n          \"text\": { \"body\": \"Coupon\" }\n        }]\n      }\n    }]\n  }]\n}" }
+          },
+          "description": "Simulates a customer sending 'Coupon' via WhatsApp.\nWebhook is public — no auth needed.\nChange test_phone to try 5 different numbers."
+        }
+      ]
+    },
+
+    {
+      "name": "🏁 06 — Full QA Sign-off Flow",
+      "description": "Run these 6 requests in sequence for the Randgo sign-off session.\nChange test_phone between runs to show 5 different accounts.",
+      "item": [
+        {
+          "name": "QA Step 1 — Login",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.collectionVariables.set('randgo_session_token', res.Info?.SessionToken || '');",
+            "pm.test('QA: Login OK', () => pm.expect(res.Success).to.be.true);",
+            "pm.test('QA: Token present', () => pm.expect(res.Info?.SessionToken).to.be.a('string'));"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Account/Login", "host": ["{{BASE_URL}}"], "path": ["api","Account","Login"] },
+            "body": { "mode": "raw", "raw": "{\n  \"Username\": \"{{RANDGO_USERNAME}}\",\n  \"Password\": \"{{RANDGO_PASSWORD}}\"\n}" }
+          }
+        },
+        {
+          "name": "QA Step 2 — AccountDetailsGet",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('QA: AccountDetails OK', () => pm.expect(res.Success).to.be.true);",
+            "pm.test('QA: Has ClientSchemes', () => pm.expect(res.Info?.ClientSchemes?.length).to.be.greaterThan(0));"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Account/AccountDetailsGet", "host": ["{{BASE_URL}}"], "path": ["api","Account","AccountDetailsGet"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\"\n}" }
+          }
+        },
+        {
+          "name": "QA Step 3 — VouchersGet",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('QA: VouchersGet OK', () => pm.expect(res.Success).to.be.true);",
+            "let count = 0;",
+            "(res.Vendors || []).forEach(v => count += (v.Vouchers || []).length);",
+            "pm.test('QA: Has vouchers', () => pm.expect(count).to.be.greaterThan(0));"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Voucher/VouchersGet", "host": ["{{BASE_URL}}"], "path": ["api","Voucher","VouchersGet"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\"\n}" }
+          }
+        },
+        {
+          "name": "QA Step 4 — Member Import",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('QA: Import queued', () => pm.expect(res.Success).to.be.true);",
+            "pm.collectionVariables.set('batch_guid', res.Batch?.Guid || '');",
+            "console.log('BatchGuid:', res.Batch?.Guid, '| Status:', res.Batch?.Status);"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Member/Import", "host": ["{{BASE_URL}}"], "path": ["api","Member","Import"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"ClientSchemeGuid\": \"{{client_scheme_guid}}\",\n  \"PrimaryKeyName\": \"Cellphone\",\n  \"ClientSchemMemberIdentifierGuid\": \"{{member_identifier_guid}}\",\n  \"Members\": [{\n    \"UniqueUserKey\": \"{{test_phone}}\",\n    \"Cellphone\": \"{{test_phone}}\",\n    \"Active\": true,\n    \"Registered\": true\n  }]\n}" }
+          }
+        },
+        {
+          "name": "QA Step 5 — Poll Batch (wait 20s first)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('QA: Batch retrieved', () => pm.expect(res.Success).to.be.true);",
+            "console.log('Status:', res.Batch?.Status, '| Imported:', res.Batch?.ImportedRowCount, '/', res.Batch?.RowCount);",
+            "if (res.Batch?.Status === 'Completed') console.log('✅ COMPLETE — do not poll again');",
+            "else console.log('⏳ Pending — wait 20s then re-run');"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Member/Import/Batch/GetByBatchGuid", "host": ["{{BASE_URL}}"], "path": ["api","Member","Import","Batch","GetByBatchGuid"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"BatchGuid\": \"{{batch_guid}}\"\n}" }
+          }
+        },
+        {
+          "name": "QA Step 6 — CouponBasketCheckout",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "pm.test('QA: Checkout OK', () => pm.expect(res.Success).to.be.true);",
+            "pm.test('QA: Codes issued', () => pm.expect(res.Basket?.Codes?.length).to.be.greaterThan(0));",
+            "if (res.Basket?.Codes) {",
+            "  console.log('\\n✅ COUPON CODES:');",
+            "  res.Basket.Codes.forEach((c, i) => console.log('  '+(i+1)+'.', c.IsssuedCode || c.IssuedCode));",
+            "}",
+            "const failed = (res.Basket?.Coupons || []).filter(c => c.IssueFailed);",
+            "if (failed.length) console.error('❌ Failed coupons:', failed.map(c => c.VoucherGuid));"
+          ]}}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/api/Voucher/Coupon/Basket/Checkout", "host": ["{{BASE_URL}}"], "path": ["api","Voucher","Coupon","Basket","Checkout"] },
+            "body": { "mode": "raw", "raw": "{\n  \"SessionToken\": \"{{randgo_session_token}}\",\n  \"PrimaryKeyName\": \"Cellphone\",\n  \"PrimaryKeyValue\": \"{{test_phone}}\",\n  \"RedemptionType\": \"WebService\",\n  \"IssueExistingBasket\": false,\n  \"Coupons\": [\n    \"{{voucher_guid_1}}\",\n    \"{{voucher_guid_2}}\",\n    \"{{voucher_guid_3}}\",\n    \"{{voucher_guid_4}}\",\n    \"{{voucher_guid_5}}\"\n  ]\n}" }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,138 @@
+package com.acidcouponbot.randgo;
+
+import com.acidcouponbot.model.RandgoSession;
+import com.acidcouponbot.randgo.dto.RandgoLoginRequest;
+import com.acidcouponbot.randgo.dto.RandgoLoginResponse;
+import com.acidcouponbot.repository.RandgoSessionRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+
+import java.util.Optional;
+
+/**
+ * Manages the Randgo SessionToken lifecycle.
+ *
+ * CRITICAL RULES FROM RANDGO DOC:
+ * - Login ONCE per day maximum
+ * - More than 1 call/day = account suspended for 2 hours on Live
+ * - Token is on a sliding 24hr window (using it refreshes it)
+ * - On 401 response: re-login once, then retry
+ *
+ * This class:
+ * 1. Stores the token in DB (survives restarts)
+ * 2. Returns cached token if still valid
+ * 3. Only calls Login when token is expired or missing
+ * 4. Detects 401 and triggers re-login
+ */
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class RandgoSessionManager {
+
+    @Value("${randgo.api.url}")
+    private String apiUrl;
+
+    @Value("${randgo.username}")
+    private String username;
+
+    @Value("${randgo.password}")
+    private String password;
+
+    @Value("${randgo.mock.mode:true}")
+    private boolean mockMode;
+
+    private final RandgoSessionRepository sessionRepository;
+    private final WebClient.Builder webClientBuilder;
+
+    private static final String MOCK_TOKEN = "MOCK-SESSION-TOKEN-DEV-MODE";
+
+    /**
+     * Returns a valid SessionToken.
+     * Uses cached token if valid, otherwise logs in.
+     */
+    public String getSessionToken() {
+        if (mockMode) {
+            log.debug("Mock mode — returning mock session token");
+            return MOCK_TOKEN;
+        }
+
+        // Check DB for existing valid token
+        Optional<RandgoSession> existing = sessionRepository
+                .findTopByActiveTrueOrderByCreatedAtDesc();
+
+        if (existing.isPresent() && !existing.get().isExpired()) {
+            RandgoSession session = existing.get();
+            session.extendExpiry(); // sliding window
+            sessionRepository.save(session);
+            log.debug("Using cached Randgo session token");
+            return session.getSessionToken();
+        }
+
+        log.info("Randgo session token expired or missing — logging in");
+        return login();
+    }
+
+    /**
+     * Force re-login — called when API returns 401.
+     * Invalidates existing session and creates new one.
+     */
+    public String forceRelogin() {
+        log.warn("Forcing Randgo re-login due to 401 response");
+
+        // Invalidate existing sessions
+        sessionRepository.findTopByActiveTrueOrderByCreatedAtDesc()
+                .ifPresent(s -> {
+                    s.setActive(false);
+                    sessionRepository.save(s);
+                });
+
+        return login();
+    }
+
+    /**
+     * Calls POST /api/Account/Login
+     * ONLY called when token is expired or on 401.
+     */
+    private String login() {
+        log.info("Calling Randgo Login API...");
+
+        try {
+            RandgoLoginResponse response = webClientBuilder.build()
+                    .post()
+                    .uri(apiUrl + "/api/Account/Login")
+                    .header("Content-Type", "application/json")
+                    .bodyValue(new RandgoLoginRequest(username, password))
+                    .retrieve()
+                    .bodyToMono(RandgoLoginResponse.class)
+                    .block();
+
+            if (response == null || !response.isSuccess() || response.getSessionToken() == null) {
+                String msg = response != null ? response.getMessage() : "null response";
+                log.error("Randgo login failed: {}", msg);
+                throw new RuntimeException("Randgo login failed: " + msg);
+            }
+
+            // Save new session to DB
+            RandgoSession session = RandgoSession.builder()
+                    .sessionToken(response.getSessionToken())
+                    .accountGuid(response.getAccountGuid())
+                    .active(true)
+                    .build();
+            sessionRepository.save(session);
+
+            log.info("Randgo login successful — session token cached");
+            return response.getSessionToken();
+
+        } catch (WebClientResponseException e) {
+            log.error("Randgo login HTTP error: {} — {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("Randgo login HTTP error: " + e.getStatusCode(), e);
+        } catch (Exception e) {
+            log.error("Randgo login exception: {}", e.getMessage());
+            throw new RuntimeException("Randgo login failed", e);
+        }
+    }
+}

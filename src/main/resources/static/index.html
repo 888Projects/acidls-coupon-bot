@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>ACID Coupon Hub — Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <style>
+    :root{
+      --bg:#09090b;--bg2:#111113;--bg3:#18181b;
+      --border:#27272a;--border2:#3f3f46;
+      --gold:#f5c800;--gold2:#e8b800;--gold-dim:rgba(245,200,0,.08);--gold-glow:rgba(245,200,0,.2);
+      --teal:#00a3a3;--teal-dim:rgba(0,163,163,.08);
+      --red:#ef4444;--red-dim:rgba(239,68,68,.08);
+      --amber:#e8952a;--amber-dim:rgba(232,149,42,.08);
+      --green:#22c55e;--green-dim:rgba(34,197,94,.08);
+      --text:#fafafa;--text2:#a1a1aa;--text3:#52525b;
+      --mono:'DM Mono',monospace;--sans:'Outfit',sans-serif;
+      --radius:12px;--radius-sm:8px;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;}
+    ::-webkit-scrollbar{width:4px;height:4px;}
+    ::-webkit-scrollbar-track{background:var(--bg);}
+    ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px;}
+
+    /* ── LAYOUT ─────────────────────────────────────────────────────────── */
+    .shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh;}
+    .sidebar{background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;}
+    .main{min-height:100vh;overflow-y:auto;}
+
+    /* ── SIDEBAR ────────────────────────────────────────────────────────── */
+    .logo{padding:28px 24px 24px;border-bottom:1px solid var(--border);}
+    .logo-mark{display:flex;align-items:center;gap:10px;margin-bottom:4px;}
+    .logo-hex{width:36px;height:36px;background:linear-gradient(135deg,var(--gold),var(--amber));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#000;flex-shrink:0;}
+    .logo-name{font-size:17px;font-weight:800;color:var(--text);letter-spacing:-0.3px;}
+    .logo-badge{display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:3px 10px;background:var(--gold-dim);border:1px solid var(--gold-glow);border-radius:99px;font-size:10px;font-weight:600;color:var(--gold);letter-spacing:0.5px;text-transform:uppercase;}
+    .dot-live{width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 2s infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+    .nav-section{padding:16px 24px 6px;font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:600;}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);border-radius:var(--radius-sm);margin:2px 8px;border:1px solid transparent;transition:all .15s;}
+    .nav-item .nav-icon{width:18px;text-align:center;font-size:15px;}
+    .nav-item:hover{background:var(--bg3);color:var(--text);}
+    .nav-item.active{background:var(--gold-dim);color:var(--gold);border-color:var(--gold-glow);}
+
+    .sidebar-bottom{margin-top:auto;padding:16px 16px 20px;border-top:1px solid var(--border);}
+    .version-chip{font-size:11px;color:var(--text3);font-family:var(--mono);text-align:center;margin-bottom:10px;}
+    .logout-btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:9px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;color:var(--text2);text-decoration:none;border:1px solid var(--border);transition:all .15s;width:100%;}
+    .logout-btn:hover{color:var(--red);border-color:rgba(239,68,68,.4);background:var(--red-dim);}
+
+    /* ── PAGE CONTENT ───────────────────────────────────────────────────── */
+    .page{display:none;padding:36px 44px;}.page.active{display:block;}
+    .page-header{margin-bottom:32px;}
+    .page-title{font-size:26px;font-weight:800;letter-spacing:-0.6px;color:var(--text);}
+    .page-sub{color:var(--text2);font-size:13px;margin-top:4px;line-height:1.5;}
+
+    /* ── STATS GRID ─────────────────────────────────────────────────────── */
+    .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+    .stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;position:relative;overflow:hidden;transition:border-color .15s;}
+    .stat:hover{border-color:var(--border2);}
+    .stat-accent{position:absolute;top:0;left:0;right:0;height:2px;}
+    .stat-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:600;margin-bottom:12px;}
+    .stat-val{font-size:34px;font-weight:800;font-family:var(--mono);line-height:1;}
+    .stat-sub{font-size:11px;color:var(--text3);margin-top:6px;}
+    .c-gold{color:var(--gold);}.c-teal{color:var(--teal);}.c-amber{color:var(--amber);}.c-red{color:var(--red);}.c-green{color:var(--green);}
+
+    /* ── CARDS ──────────────────────────────────────────────────────────── */
+    .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:18px;}
+    .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+    .card-title{font-size:14px;font-weight:700;color:var(--text);}
+    .card-sub{font-size:12px;color:var(--text3);margin-top:2px;}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+    .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+
+    /* ── ALERTS ─────────────────────────────────────────────────────────── */
+    .alert{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;margin-bottom:10px;border:1px solid;}
+    .alert.warn{background:var(--amber-dim);border-color:rgba(232,149,42,.3);color:var(--amber);}
+    .alert.danger{background:var(--red-dim);border-color:rgba(239,68,68,.3);color:var(--red);}
+    .alert.success{background:var(--green-dim);border-color:rgba(34,197,94,.3);color:var(--green);}
+    .alert.info{background:var(--teal-dim);border-color:rgba(0,163,163,.3);color:var(--teal);}
+
+    /* ── BUTTONS ────────────────────────────────────────────────────────── */
+    .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:var(--sans);}
+    .btn-gold{background:var(--gold);color:#000;}.btn-gold:hover{background:var(--gold2);transform:translateY(-1px);}
+    .btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border);}.btn-ghost:hover{background:var(--bg3);color:var(--text);border-color:var(--border2);}
+    .btn-danger{background:var(--red-dim);color:var(--red);border:1px solid rgba(239,68,68,.3);}.btn-danger:hover{background:rgba(239,68,68,.15);}
+    .btn-sm{padding:5px 12px;font-size:12px;}
+    .btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important;}
+    .btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;}
+
+    /* ── FORMS ──────────────────────────────────────────────────────────── */
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    .form-group{display:flex;flex-direction:column;gap:6px;}.form-group.full{grid-column:1/-1;}
+    label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);font-weight:600;}
+    input,select,textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:9px 13px;border-radius:var(--radius-sm);font-size:13px;font-family:var(--sans);outline:none;transition:border-color .15s;}
+    input:focus,select:focus,textarea:focus{border-color:var(--gold);}
+    input::placeholder,textarea::placeholder{color:var(--text3);}
+
+    /* ── TABLES ─────────────────────────────────────────────────────────── */
+    .table-wrap{border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;overflow-x:auto;}
+    table{width:100%;border-collapse:collapse;}
+    thead tr{background:var(--bg3);}
+    th{text-align:left;padding:11px 16px;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border);}
+    td{padding:11px 16px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle;}
+    tr:last-child td{border-bottom:none;}
+    tbody tr{transition:background .1s;}
+    tbody tr:hover td{background:rgba(255,255,255,.018);}
+    .mono{font-family:var(--mono);font-size:12px;}
+
+    /* ── BADGES ─────────────────────────────────────────────────────────── */
+    .badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:3px 10px;border-radius:99px;text-transform:uppercase;letter-spacing:0.5px;border:1px solid;}
+    .badge-green{background:var(--green-dim);color:var(--green);border-color:rgba(34,197,94,.3);}
+    .badge-gold{background:var(--gold-dim);color:var(--gold);border-color:var(--gold-glow);}
+    .badge-amber{background:var(--amber-dim);color:var(--amber);border-color:rgba(232,149,42,.3);}
+    .badge-red{background:var(--red-dim);color:var(--red);border-color:rgba(239,68,68,.3);}
+    .badge-gray{background:rgba(82,82,91,.15);color:var(--text3);border-color:rgba(82,82,91,.2);}
+    .badge-teal{background:var(--teal-dim);color:var(--teal);border-color:rgba(0,163,163,.3);}
+
+    /* ── CAMPAIGN HERO ──────────────────────────────────────────────────── */
+    .campaign-hero{background:linear-gradient(135deg,rgba(245,200,0,.06),rgba(0,163,163,.04));border:1px solid var(--gold-glow);border-radius:var(--radius);padding:24px 28px;margin-bottom:18px;position:relative;overflow:hidden;}
+    .campaign-hero::before{content:'';position:absolute;top:-40px;right:-40px;width:160px;height:160px;background:radial-gradient(circle,var(--gold-dim),transparent 70%);pointer-events:none;}
+    .campaign-hero-name{font-size:22px;font-weight:800;letter-spacing:-0.4px;margin-bottom:12px;}
+    .campaign-meta{display:flex;gap:24px;flex-wrap:wrap;}
+    .campaign-meta-item{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);}
+    .campaign-meta-item strong{color:var(--text);}
+
+    /* ── VOUCHER CARD GRID ──────────────────────────────────────────────── */
+    .voucher-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;}
+    .voucher-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:16px;position:relative;transition:border-color .15s;}
+    .voucher-card.in-bundle{border-color:rgba(245,200,0,.3);}
+    .voucher-card:hover{border-color:var(--border2);}
+    .voucher-card .v-emoji{font-size:28px;margin-bottom:8px;display:block;}
+    .voucher-card .v-name{font-size:12px;font-weight:600;color:var(--text);line-height:1.4;margin-bottom:4px;}
+    .voucher-card .v-product{font-size:11px;color:var(--text3);margin-bottom:8px;}
+    .voucher-card .v-discount{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--gold);}
+    .voucher-card .v-vendor{font-size:10px;color:var(--text3);margin-top:4px;}
+    .voucher-toggle{position:absolute;top:10px;right:10px;cursor:pointer;}
+
+    /* ── WHATSAPP PREVIEW ───────────────────────────────────────────────── */
+    .wa-shell{background:#0b1419;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);}
+    .wa-topbar{background:#1f2c33;padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.05);}
+    .wa-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--amber));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#000;}
+    .wa-contact{font-size:13px;font-weight:600;color:#e9edef;}
+    .wa-status{font-size:11px;color:#8696a0;}
+    .wa-body{padding:16px;min-height:200px;}
+    .wa-msg{background:#1a3a2a;border-radius:0 10px 10px 10px;padding:12px 14px;max-width:88%;display:inline-block;}
+    .wa-msg-text{font-size:12.5px;line-height:1.7;color:#d9fdd3;white-space:pre-wrap;font-family:'Courier New',monospace;}
+    .wa-time{font-size:10px;color:#8696a0;text-align:right;margin-top:6px;}
+
+    /* ── COUPON VOUCHER DISPLAY ─────────────────────────────────────────── */
+    .coupon-issued-list{display:flex;flex-direction:column;gap:12px;margin-top:16px;}
+    .coupon-issued-item{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;}
+    .coupon-issued-item.bundle{border-color:rgba(245,200,0,.2);background:linear-gradient(135deg,rgba(245,200,0,.03),var(--bg3));}
+    .ci-emoji{font-size:24px;}
+    .ci-info .ci-name{font-size:13px;font-weight:600;color:var(--text);line-height:1.3;}
+    .ci-info .ci-discount{font-size:12px;color:var(--gold);font-weight:600;margin-top:2px;}
+    .ci-info .ci-bundled{font-size:11px;color:var(--text3);margin-top:4px;}
+    .ci-code{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--gold);background:var(--gold-dim);border:1px solid var(--gold-glow);padding:7px 14px;border-radius:var(--radius-sm);}
+
+    /* ── SYNC CARDS ─────────────────────────────────────────────────────── */
+    .sync-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:22px;}
+    .sync-title{font-size:14px;font-weight:700;margin-bottom:6px;}
+    .sync-desc{font-size:12px;color:var(--text3);line-height:1.7;margin-bottom:16px;}
+    .sync-result{margin-top:12px;font-size:12px;padding:8px 12px;border-radius:var(--radius-sm);display:none;}
+    .sync-result.show{display:block;}
+    .sync-result.ok{background:var(--green-dim);color:var(--green);}
+    .sync-result.fail{background:var(--red-dim);color:var(--red);}
+
+    /* ── RANDGO STATUS ──────────────────────────────────────────────────── */
+    .conn-row{display:flex;align-items:center;gap:10px;padding:14px 0;}
+    .conn-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+    .conn-dot.live{background:var(--green);box-shadow:0 0 8px rgba(34,197,94,.5);animation:pulse 2s infinite;}
+    .conn-dot.mock{background:var(--amber);}
+    .conn-dot.dead{background:var(--red);}
+
+    /* ── RATE LIMIT TABLE ───────────────────────────────────────────────── */
+    .rl-row{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border);}
+    .rl-row:last-child{border-bottom:none;}
+    .rl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+    .rl-name{font-size:13px;font-weight:600;flex:1;}
+    .rl-rule{font-size:12px;color:var(--text3);}
+
+    /* ── EMPTY ──────────────────────────────────────────────────────────── */
+    .empty{text-align:center;padding:48px 24px;color:var(--text3);}
+    .empty-icon{font-size:36px;margin-bottom:10px;}
+    .empty-text{font-size:14px;}
+    .empty-sub{font-size:12px;margin-top:4px;}
+
+    /* ── TOAST ──────────────────────────────────────────────────────────── */
+    .toast{position:fixed;bottom:24px;right:24px;z-index:9999;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 18px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;transform:translateY(80px);opacity:0;transition:all .3s cubic-bezier(0.34,1.56,0.64,1);max-width:360px;pointer-events:none;}
+    .toast.show{transform:translateY(0);opacity:1;}
+    .toast.success{border-left:3px solid var(--green);}
+    .toast.error{border-left:3px solid var(--red);}
+    .toast.warn{border-left:3px solid var(--amber);}
+
+    /* ── DIVIDER ────────────────────────────────────────────────────────── */
+    hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
+
+    /* ── MODAL ──────────────────────────────────────────────────────────── */
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;}
+    .modal-overlay.open{opacity:1;pointer-events:auto;}
+    .modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:28px;max-width:680px;width:90%;max-height:80vh;overflow-y:auto;}
+    .modal-title{font-size:16px;font-weight:700;margin-bottom:16px;}
+    .modal-close{position:absolute;top:0;right:0;padding:8px;cursor:pointer;}
+
+    /* ── VOUCHER DIFF INSIGHT ───────────────────────────────────────────── */
+    .insight-box{background:linear-gradient(135deg,var(--gold-dim),transparent);border:1px solid var(--gold-glow);border-radius:var(--radius);padding:18px 22px;margin-bottom:18px;}
+    .insight-title{font-size:13px;font-weight:700;color:var(--gold);margin-bottom:8px;}
+    .insight-row{display:flex;align-items:baseline;gap:6px;font-size:13px;color:var(--text2);line-height:1.8;}
+    .insight-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;}
+    .tag-dairy{background:rgba(59,130,246,.15);color:#93c5fd;}
+    .tag-frozen{background:rgba(99,102,241,.15);color:#a5b4fc;}
+    .tag-baby{background:rgba(232,121,249,.15);color:#f0abfc;}
+    .tag-pantry{background:rgba(34,197,94,.15);color:#86efac;}
+    .tag-household{background:rgba(245,158,11,.15);color:#fcd34d;}
+    .tag-personal{background:rgba(236,72,153,.15);color:#f9a8d4;}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">
+        <div class="logo-hex">A</div>
+        <div class="logo-name">ACID Coupon Hub</div>
+      </div>
+      <div class="logo-badge"><span class="dot-live"></span> Randgo Integration</div>
+    </div>
+    <div class="nav-section">Overview</div>
+    <div class="nav-item active" onclick="showPage('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</div>
+    <div class="nav-section">Management</div>
+    <div class="nav-item" onclick="showPage('campaigns',this)"><span class="nav-icon">📋</span>Campaigns</div>
+    <div class="nav-item" onclick="showPage('vouchers',this)"><span class="nav-icon">🎟️</span>Vouchers</div>
+    <div class="nav-item" onclick="showPage('sync',this)"><span class="nav-icon">🔄</span>Sync</div>
+    <div class="nav-section">Analytics</div>
+    <div class="nav-item" onclick="showPage('redemptions',this)"><span class="nav-icon">✅</span>Redemptions</div>
+    <div class="nav-item" onclick="showPage('failed',this)"><span class="nav-icon">⚠️</span>Failed Sends</div>
+    <div class="nav-section">Tooling</div>
+    <div class="nav-item" onclick="showPage('preview',this)"><span class="nav-icon">💬</span>Message Preview</div>
+    <div class="nav-item" onclick="showPage('coupon-issued',this)"><span class="nav-icon">🏷️</span>Coupon Explorer</div>
+    <div class="nav-item" onclick="showPage('randgo',this)"><span class="nav-icon">🔌</span>Randgo Status</div>
+    <div class="sidebar-bottom">
+      <div class="version-chip">v2.0.0 · dev</div>
+      <a href="/logout" class="logout-btn">↩ Sign Out</a>
+    </div>
+  </nav>
+  <main class="main">
+
+    <!-- ── DASHBOARD ─────────────────────────────────────────────────── -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div class="page-title">Dashboard</div>
+        <div class="page-sub" id="dash-sub">Loading campaign data...</div>
+      </div>
+      <div id="alerts"></div>
+      <div class="stats-row">
+        <div class="stat"><div class="stat-accent" style="background:var(--gold)"></div><div class="stat-label">Total Claims</div><div class="stat-val c-gold" id="s-redeemed">—</div><div class="stat-sub">Customers served</div></div>
+        <div class="stat"><div class="stat-accent" style="background:var(--green)"></div><div class="stat-label">Redeemed at Till</div><div class="stat-val c-green" id="s-till">—</div><div class="stat-sub">Confirmed used in store</div></div>
+        <div class="stat"><div class="stat-accent" style="background:var(--teal)"></div><div class="stat-label">Fallback Stock</div><div class="stat-val c-teal" id="s-fallback">—</div><div class="stat-sub">Local cache codes</div></div>
+        <div class="stat"><div class="stat-accent" style="background:var(--red)"></div><div class="stat-label">Failed Sends</div><div class="stat-val c-red" id="s-failed">—</div><div class="stat-sub">Pending WhatsApp retry</div></div>
+      </div>
+      <div id="campaign-card"></div>
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">📦 Voucher Bundle in Active Campaign</div><div class="card-sub">Products customers receive coupons for — each with unique code from Randgo</div></div>
+        </div>
+        <div id="voucher-bundle-grid" class="voucher-grid"></div>
+      </div>
+    </div>
+
+    <!-- ── CAMPAIGNS ──────────────────────────────────────────────────── -->
+    <div class="page" id="page-campaigns">
+      <div class="page-header">
+        <div class="page-title">Campaigns</div>
+        <div class="page-sub">Create and manage coupon campaigns. Only one can be active at a time.</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div><div class="card-title">➕ New Campaign</div><div class="card-sub">Set up a new coupon distribution campaign</div></div></div>
+        <div class="form-grid">
+          <div class="form-group"><label>Campaign Name</label><input id="c-name" placeholder="Shoprite Grocery — May 2026"/></div>
+          <div class="form-group"><label>Retailer Name</label><input id="c-retailer" placeholder="Shoprite"/></div>
+          <div class="form-group"><label>Retailer Emoji</label><input id="c-emoji" placeholder="🛒" maxlength="4"/></div>
+          <div class="form-group"><label>Bundle Size</label><input type="number" id="c-bundle" value="5" min="1" max="20"/></div>
+          <div class="form-group"><label>Expiry Date</label><input type="datetime-local" id="c-expiry"/></div>
+          <div class="form-group"><label>Set Active Now</label><select id="c-active"><option value="true">Yes — activate immediately</option><option value="false">No — save as draft</option></select></div>
+          <div class="form-group full"><label>Description</label><textarea id="c-desc" rows="2" placeholder="Exclusive grocery savings for ACID LS Wallet members."></textarea></div>
+        </div>
+        <div class="btn-row"><button class="btn btn-gold" onclick="createCampaign()">Create Campaign</button></div>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>ID</th><th>Campaign</th><th>Retailer</th><th>Status</th><th>Expiry</th><th>Bundle</th><th>Actions</th></tr></thead>
+          <tbody id="campaigns-tbody"><tr><td colspan="7"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Loading...</div></div></td></tr></tbody></table>
+      </div>
+    </div>
+
+    <!-- ── VOUCHERS ───────────────────────────────────────────────────── -->
+    <div class="page" id="page-vouchers">
+      <div class="page-header">
+        <div class="page-title">Vouchers</div>
+        <div class="page-sub">Randgo voucher catalogue — synced monthly. Toggle which products are included in customer bundles.</div>
+      </div>
+      <div class="insight-box">
+        <div class="insight-title">💡 Why customers see different products</div>
+        <div class="insight-row">Randgo groups vouchers of the same denomination into a single barcode. Each customer's codes are <strong>unique to their phone number</strong>. The products per bundle depend on which vouchers have <span class="badge badge-gold">In Bundle</span> set below.</div>
+      </div>
+      <div id="vouchers-by-category"></div>
+    </div>
+
+    <!-- ── SYNC ───────────────────────────────────────────────────────── -->
+    <div class="page" id="page-sync">
+      <div class="page-header">
+        <div class="page-title">Data Sync</div>
+        <div class="page-sub">Manage Randgo synchronisation. Run manually or let the scheduler handle it.</div>
+      </div>
+      <div class="two-col" style="margin-bottom:18px;">
+        <div class="sync-card">
+          <div class="sync-title">🎟️ Voucher Metadata</div>
+          <div class="sync-desc">Pulls full voucher catalogue from Randgo <code style="color:var(--gold)">VouchersGet</code>. Updates product names, discounts, images and expiry dates.<br/><strong style="color:var(--amber)">⚠️ Max 10 calls/week — use sparingly.</strong><br/>Auto-runs: 1st of each month at 02:00.</div>
+          <button class="btn btn-gold" id="sync-v-btn" onclick="syncVouchers()">🔄 Sync Vouchers Now</button>
+          <div id="sync-v-result" class="sync-result"></div>
+        </div>
+        <div class="sync-card">
+          <div class="sync-title">💾 Fallback Code Cache</div>
+          <div class="sync-desc">Pulls available codes into local DB from Randgo <code style="color:var(--gold)">CodesGet</code>. Used automatically if live Randgo API is unavailable during the day.<br/>Auto-runs: nightly at 23:30.</div>
+          <button class="btn btn-gold" id="sync-c-btn" onclick="syncCodes()">💾 Sync Codes Now</button>
+          <div id="sync-c-result" class="sync-result"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">⏰ Automatic Schedule</div></div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div class="rl-row"><div class="rl-dot" style="background:var(--gold)"></div><div class="rl-name">Monthly (1st, 02:00)</div><div class="rl-rule">VouchersGet — pulls full product catalogue from Randgo</div></div>
+          <div class="rl-row"><div class="rl-dot" style="background:var(--teal)"></div><div class="rl-name">Nightly (23:30)</div><div class="rl-rule">CodesGet — refreshes local fallback code pool</div></div>
+          <div class="rl-row"><div class="rl-dot" style="background:var(--amber)"></div><div class="rl-name">Nightly (00:30)</div><div class="rl-rule">Issued API — updates till redemption stats</div></div>
+          <div class="rl-row" style="border-bottom:none"><div class="rl-dot" style="background:var(--text3)"></div><div class="rl-name">Every 5 min</div><div class="rl-rule">Retry job — resends failed WhatsApp messages (max 3 attempts)</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── REDEMPTIONS ────────────────────────────────────────────────── -->
+    <div class="page" id="page-redemptions">
+      <div class="page-header">
+        <div class="page-title">Redemptions</div>
+        <div class="page-sub">Full audit trail of every coupon claim. Click a row to see the exact message sent.</div>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Phone</th><th>Campaign</th><th>Claimed At</th><th>Source</th><th>WhatsApp</th><th>Till Redeemed</th><th>View</th></tr></thead>
+          <tbody id="redemptions-tbody"><tr><td colspan="7"><div class="empty"><div class="empty-icon">✅</div><div class="empty-text">Loading...</div></div></td></tr></tbody></table>
+      </div>
+      <div id="msg-panel" style="display:none;margin-top:20px;">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:16px;">💬 Message Sent to Customer</div>
+          <div class="wa-shell">
+            <div class="wa-topbar">
+              <div class="wa-avatar">A</div>
+              <div><div class="wa-contact">ACID Coupon Bot</div><div class="wa-status">online</div></div>
+            </div>
+            <div class="wa-body">
+              <div class="wa-msg"><div class="wa-msg-text" id="msg-text"></div><div class="wa-time">Delivered ✓✓</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── FAILED SENDS ───────────────────────────────────────────────── -->
+    <div class="page" id="page-failed">
+      <div class="page-header">
+        <div class="page-title">Failed Sends</div>
+        <div class="page-sub">WhatsApp messages that did not deliver. Auto-retried every 5 minutes, max 3 attempts.</div>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Phone</th><th>Campaign</th><th>Attempts</th><th>Last Attempt</th><th>Status</th></tr></thead>
+          <tbody id="failed-tbody"><tr><td colspan="5"><div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text">Loading...</div></div></td></tr></tbody></table>
+      </div>
+    </div>
+
+    <!-- ── MESSAGE PREVIEW ───────────────────────────────────────────── -->
+    <div class="page" id="page-preview">
+      <div class="page-header">
+        <div class="page-title">Message Preview</div>
+        <div class="page-sub">Exact WhatsApp message a customer receives after sending "Coupon"</div>
+      </div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:16px;">📱 Customer Journey</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div class="rl-row"><div class="rl-dot" style="background:var(--text3)"></div><div class="rl-name" style="font-size:12px;">Scans QR code on shelf or poster</div></div>
+            <div class="rl-row"><div class="rl-dot" style="background:var(--text3)"></div><div class="rl-name" style="font-size:12px;">WhatsApp opens — sends "Coupon"</div></div>
+            <div class="rl-row"><div class="rl-dot" style="background:var(--amber)"></div><div class="rl-name" style="font-size:12px;">Duplicate check — one claim per campaign</div></div>
+            <div class="rl-row"><div class="rl-dot" style="background:var(--teal)"></div><div class="rl-name" style="font-size:12px;">Member registered in Randgo via phone number</div></div>
+            <div class="rl-row"><div class="rl-dot" style="background:var(--gold)"></div><div class="rl-name" style="font-size:12px;">Live Randgo CouponBasketCheckout called</div></div>
+            <div class="rl-row"><div class="rl-dot" style="background:var(--text3)"></div><div class="rl-name" style="font-size:12px;">Fallback to local cache if API down</div></div>
+            <div class="rl-row" style="border-bottom:none"><div class="rl-dot" style="background:var(--green)"></div><div class="rl-name" style="font-size:12px;">Unique codes sent — customer shows at till</div></div>
+          </div>
+        </div>
+        <div class="wa-shell">
+          <div class="wa-topbar">
+            <div class="wa-avatar">A</div>
+            <div><div class="wa-contact">ACID Coupon Bot</div><div class="wa-status">online</div></div>
+          </div>
+          <div class="wa-body">
+            <div class="wa-msg"><div class="wa-msg-text" id="preview-msg">Loading...</div><div class="wa-time">Delivered ✓✓</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── COUPON EXPLORER ────────────────────────────────────────────── -->
+    <div class="page" id="page-coupon-issued">
+      <div class="page-header">
+        <div class="page-title">Coupon Explorer</div>
+        <div class="page-sub">Understand exactly what a customer receives — full product names, bundle groupings, and unique code structure</div>
+      </div>
+      <div class="insight-box">
+        <div class="insight-title">🔍 How Randgo groups coupon codes</div>
+        <div class="insight-row">Randgo bundles vouchers with the <strong>same denomination (rand value)</strong> into a single scannable barcode. A customer with 5 vouchers may receive 3 barcodes — one covering the 3 x R20 items, one for the R10 item, one for the R5 item. Every barcode is <strong>unique to that customer's phone number</strong> and cannot be used by another customer.</div>
+      </div>
+      <div id="coupon-explorer-content">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:16px;">🧾 Sample Customer Bundle</div>
+          <div class="coupon-issued-list" id="sample-bundle">
+            <div class="empty"><div class="empty-icon">🎟️</div><div class="empty-text">Load vouchers first (Sync → Sync Vouchers)</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RANDGO STATUS ──────────────────────────────────────────────── -->
+    <div class="page" id="page-randgo">
+      <div class="page-header">
+        <div class="page-title">Randgo Status</div>
+        <div class="page-sub">API connection, rate limits, and environment configuration</div>
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-title" style="margin-bottom:12px;">🔌 API Connection</div>
+        <div class="conn-row" id="randgo-conn"><div class="conn-dot mock"></div><span style="color:var(--text2)">Checking connection...</span></div>
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-title" style="margin-bottom:16px;">⚠️ Rate Limits (enforced in code)</div>
+        <div class="rl-row"><div class="rl-dot" style="background:var(--red)"></div><div class="rl-name">Login</div><div class="rl-rule">Max 1/day · violation = 2hr account suspension on Live</div></div>
+        <div class="rl-row"><div class="rl-dot" style="background:var(--red)"></div><div class="rl-name">VouchersGet</div><div class="rl-rule">Max 10/week · called monthly by scheduler</div></div>
+        <div class="rl-row"><div class="rl-dot" style="background:var(--amber)"></div><div class="rl-name">CodesGet</div><div class="rl-rule">Max 1/10min · only called after hours (23:00–05:00)</div></div>
+        <div class="rl-row"><div class="rl-dot" style="background:var(--amber)"></div><div class="rl-name">Issued API</div><div class="rl-rule">Only allowed 23:00–05:00 · called at 00:30</div></div>
+        <div class="rl-row" style="border-bottom:none"><div class="rl-dot" style="background:var(--green)"></div><div class="rl-name">CouponBasketCheckout</div><div class="rl-rule">No rate limit · called live per customer claim</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px;">🌐 Environments</div>
+        <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:var(--radius-sm);">
+            <span style="color:var(--text2)">QA / Testing</span>
+            <span class="mono" style="color:var(--gold)">https://api.randgoqa.dev</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:var(--radius-sm);">
+            <span style="color:var(--text2)">Swagger UI</span>
+            <span class="mono" style="color:var(--teal)">https://api.randgoqa.dev/swagger/ui/index</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:var(--radius-sm);">
+            <span style="color:var(--text2)">Production</span>
+            <span style="color:var(--text3)">Provided by Randgo after QA sign-off</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  const CATEGORY_COLORS={
+    'Dairy and Desserts':'tag-dairy','Frozen Food':'tag-frozen','Baby':'tag-baby',
+    'Pantry':'tag-pantry','Household':'tag-household','Personal Care':'tag-personal',
+    'Tinned Products':'tag-pantry','Condiments and Sauces':'tag-pantry',
+    'Grains':'tag-pantry','Spreads':'tag-pantry','Bakery':'tag-pantry'
+  };
+
+  function toast(msg,type='success'){
+    const t=document.getElementById('toast');
+    const icons={success:'✅',warn:'⚠️',error:'❌'};
+    t.textContent=`${icons[type]||'ℹ️'} ${msg}`;
+    t.className=`toast show ${type}`;
+    setTimeout(()=>t.className='toast',3500);
+  }
+
+  function showPage(n,el){
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+    document.getElementById('page-'+n).classList.add('active');
+    el.classList.add('active');
+    const loaders={dashboard:loadDashboard,campaigns:loadCampaigns,vouchers:loadVouchers,
+      redemptions:loadRedemptions,failed:loadFailed,preview:loadPreview,
+      randgo:loadRandgo,'coupon-issued':loadCouponExplorer};
+    if(loaders[n])loaders[n]();
+  }
+
+  function fmt(d){return d?d.replace('T',' ').substring(0,16):'—';}
+  function fmtDate(d){return d?d.substring(0,10):'—';}
+
+  // ── DASHBOARD ──────────────────────────────────────────────────────
+  async function loadDashboard(){
+    const d=await fetch('/api/stats').then(r=>r.json());
+    const al=document.getElementById('alerts');al.innerHTML='';
+    if(!d.activeCampaign){
+      document.getElementById('dash-sub').textContent='No active campaign running';
+      ['s-redeemed','s-till','s-fallback','s-failed'].forEach(id=>document.getElementById(id).textContent='0');
+      document.getElementById('campaign-card').innerHTML=`<div class="card"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No active campaign</div><div class="empty-sub">Create one in Campaigns</div></div></div>`;
+      return;
+    }
+    document.getElementById('dash-sub').textContent=`${d.retailerEmoji||''} ${d.campaignName} · ${d.retailerName}`;
+    document.getElementById('s-redeemed').textContent=d.totalRedemptions;
+    document.getElementById('s-till').textContent=d.tillRedeemed;
+    document.getElementById('s-fallback').textContent=d.totalFallbackCodes;
+    document.getElementById('s-failed').textContent=d.failedSends;
+    if(d.failedSends>0)al.innerHTML+=`<div class="alert warn">⚠️ ${d.failedSends} failed WhatsApp send(s) pending retry</div>`;
+    if(d.campaignExpired)al.innerHTML+=`<div class="alert danger">🔴 Active campaign has expired — customers cannot claim</div>`;
+    if(d.totalFallbackCodes<50)al.innerHTML+=`<div class="alert amber warn">⚠️ Fallback code stock low (${d.totalFallbackCodes}). Run Sync → Fallback Code Cache.</div>`;
+    const expiryStr=d.expiryDate&&d.expiryDate!=='N/A'?d.expiryDate.substring(0,10):'No expiry set';
+    document.getElementById('campaign-card').innerHTML=`
+      <div class="campaign-hero">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div class="campaign-hero-name">${d.retailerEmoji||'🛒'} ${d.campaignName}</div>
+          <span class="badge ${d.campaignExpired?'badge-red':'badge-green'}">${d.campaignExpired?'Expired':'Live'}</span>
+        </div>
+        <div class="campaign-meta">
+          <div class="campaign-meta-item">🏪 <strong>${d.retailerName}</strong></div>
+          <div class="campaign-meta-item">📦 Bundle: <strong>${d.bundleSize} vouchers</strong></div>
+          <div class="campaign-meta-item">⏰ <strong>${expiryStr}</strong></div>
+          <div class="campaign-meta-item" style="margin-left:auto;gap:18px;">
+            <span>Claims: <strong style="color:var(--gold);font-family:var(--mono)">${d.totalRedemptions}</strong></span>
+            <span>At Till: <strong style="color:var(--green);font-family:var(--mono)">${d.tillRedeemed}</strong></span>
+            <span>Failed: <strong style="color:${d.failedSends>0?'var(--red)':'var(--text3)'};font-family:var(--mono)">${d.failedSends}</strong></span>
+          </div>
+        </div>
+      </div>`;
+
+    // Voucher bundle grid
+    const grid=document.getElementById('voucher-bundle-grid');grid.innerHTML='';
+    try{
+      const vouchers=await fetch('/api/vouchers').then(r=>r.json());
+      const bundled=vouchers.filter(v=>v.includeInBundle);
+      if(!bundled.length){grid.innerHTML='<div class="empty"><div class="empty-text">No vouchers in bundle — run a Sync</div></div>';return;}
+      bundled.forEach(v=>{
+        grid.innerHTML+=`<div class="voucher-card in-bundle">
+          <span class="v-emoji">${v.emoji||'🛒'}</span>
+          <div class="v-name">${v.voucherName||v.product||'Unknown'}</div>
+          <div class="v-discount">${v.discountDisplay||'—'}</div>
+          <div class="v-vendor">${v.vendorName||''}</div>
+        </div>`;
+      });
+    }catch(e){grid.innerHTML='<div class="empty"><div class="empty-text">Run a voucher sync first</div></div>';}
+  }
+
+  // ── CAMPAIGNS ──────────────────────────────────────────────────────
+  async function loadCampaigns(){
+    const camps=await fetch('/api/campaigns').then(r=>r.json());
+    const tb=document.getElementById('campaigns-tbody');
+    if(!camps.length){tb.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No campaigns yet</div></div></td></tr>';return;}
+    tb.innerHTML=camps.map(c=>`<tr>
+      <td class="mono" style="color:var(--text3)">#${c.id}</td>
+      <td><strong>${c.name}</strong></td>
+      <td>${c.retailerEmoji||''} ${c.retailerName||'—'}</td>
+      <td><span class="badge ${c.active?'badge-green':'badge-gray'}">${c.active?'Active':'Draft'}</span></td>
+      <td style="font-size:12px;color:var(--text2)">${fmtDate(c.expiryDate)}</td>
+      <td><span class="badge badge-gold">${c.bundleSize||5} products</span></td>
+      <td>${!c.active?`<button class="btn btn-ghost btn-sm" onclick="activateCampaign(${c.id})">Activate</button>`:''}</td>
+    </tr>`).join('');
+  }
+
+  async function createCampaign(){
+    const name=document.getElementById('c-name').value.trim();
+    if(!name){toast('Campaign name is required','error');return;}
+    const expiry=document.getElementById('c-expiry').value;
+    await fetch('/api/campaigns',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,retailerName:document.getElementById('c-retailer').value,
+        retailerEmoji:document.getElementById('c-emoji').value||'🛒',
+        bundleSize:parseInt(document.getElementById('c-bundle').value)||5,
+        active:document.getElementById('c-active').value==='true',
+        description:document.getElementById('c-desc').value,
+        expiryDate:expiry?expiry+':00':null})});
+    toast('Campaign created');loadCampaigns();
+  }
+
+  async function activateCampaign(id){
+    await fetch('/api/campaigns/'+id+'/activate',{method:'PUT'});
+    toast('Campaign activated');loadCampaigns();loadDashboard();
+  }
+
+  // ── VOUCHERS ───────────────────────────────────────────────────────
+  async function loadVouchers(){
+    const vouchers=await fetch('/api/vouchers').then(r=>r.json());
+    const container=document.getElementById('vouchers-by-category');
+    if(!vouchers.length){
+      container.innerHTML='<div class="card"><div class="empty"><div class="empty-icon">🎟️</div><div class="empty-text">No vouchers synced</div><div class="empty-sub">Go to Sync → Sync Vouchers</div></div></div>';
+      return;
+    }
+    // Group by vendor/category
+    const byVendor={};
+    vouchers.forEach(v=>{
+      const key=v.vendorName||'Unknown';
+      if(!byVendor[key])byVendor[key]=[];
+      byVendor[key].push(v);
+    });
+    container.innerHTML='';
+    Object.entries(byVendor).forEach(([vendor,items])=>{
+      const inBundle=items.filter(v=>v.includeInBundle).length;
+      container.innerHTML+=`
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">
+            <div><div class="card-title">🏪 ${vendor}</div><div class="card-sub">${items.length} vouchers · ${inBundle} in active bundle</div></div>
+            <span class="badge badge-gold">${inBundle} active</span>
+          </div>
+          <div class="voucher-grid" id="vg-${vendor.replace(/\s/g,'_')}"></div>
+        </div>`;
+      const grid=document.getElementById('vg-'+vendor.replace(/\s/g,'_'));
+      items.forEach(v=>{
+        grid.innerHTML+=`<div class="voucher-card ${v.includeInBundle?'in-bundle':''}">
+          <div class="voucher-toggle" onclick="toggleVoucher(${v.id})" title="Toggle in bundle">
+            <span class="badge ${v.includeInBundle?'badge-gold':'badge-gray'}">${v.includeInBundle?'✓ Bundle':'✗ Off'}</span>
+          </div>
+          <span class="v-emoji">${v.emoji||'🛒'}</span>
+          <div class="v-name">${v.voucherName||v.product||'—'}</div>
+          <div class="v-discount">${v.discountDisplay||'—'}</div>
+          <div class="v-vendor" style="margin-top:6px;font-family:var(--mono);color:var(--text3)">
+            ${v.discountSingle?`R${v.discountSingle.toFixed(2)} off`:''}
+          </div>
+        </div>`;
+      });
+    });
+  }
+
+  async function toggleVoucher(id){
+    await fetch('/api/vouchers/'+id+'/toggle',{method:'PUT'});
+    toast('Bundle updated');loadVouchers();
+  }
+
+  // ── SYNC ───────────────────────────────────────────────────────────
+  async function syncVouchers(){
+    const btn=document.getElementById('sync-v-btn');
+    const res=document.getElementById('sync-v-result');
+    btn.disabled=true;btn.textContent='⏳ Syncing...';res.className='sync-result';
+    const r=await fetch('/api/sync/vouchers',{method:'POST'}).then(x=>x.json());
+    res.textContent=r.success?`✅ ${r.message}`:`❌ ${r.message}`;
+    res.className=`sync-result show ${r.success?'ok':'fail'}`;
+    toast(r.message,r.success?'success':'error');
+    btn.disabled=false;btn.textContent='🔄 Sync Vouchers Now';
+  }
+
+  async function syncCodes(){
+    const btn=document.getElementById('sync-c-btn');
+    const res=document.getElementById('sync-c-result');
+    btn.disabled=true;btn.textContent='⏳ Syncing...';res.className='sync-result';
+    const r=await fetch('/api/sync/codes',{method:'POST'}).then(x=>x.json());
+    res.textContent=r.success?`✅ ${r.message}`:`❌ ${r.message}`;
+    res.className=`sync-result show ${r.success?'ok':'fail'}`;
+    toast(r.message,r.success?'success':'warn');
+    btn.disabled=false;btn.textContent='💾 Sync Codes Now';
+  }
+
+  // ── REDEMPTIONS ────────────────────────────────────────────────────
+  async function loadRedemptions(){
+    const items=await fetch('/api/redemptions').then(r=>r.json());
+    const tb=document.getElementById('redemptions-tbody');
+    if(!items.length){tb.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-icon">✅</div><div class="empty-text">No redemptions yet</div></div></td></tr>';return;}
+    window._redemptions=items;
+    tb.innerHTML=items.map((r,i)=>`<tr style="cursor:pointer" onclick="showMsg(${i})">
+      <td class="mono">+${r.phoneNumber}</td>
+      <td class="mono" style="color:var(--text3)">#${r.campaignId}</td>
+      <td style="font-size:12px;color:var(--text2)">${fmt(r.redeemedAt)}</td>
+      <td><span class="badge ${r.randgoBasketGuid&&!r.randgoBasketGuid.startsWith('MOCK')?'badge-green':'badge-teal'}">${r.randgoBasketGuid&&!r.randgoBasketGuid.startsWith('MOCK')?'Live API':'Fallback'}</span></td>
+      <td><span class="badge ${r.messageSentSuccessfully?'badge-green':'badge-red'}">${r.messageSentSuccessfully?'✓ Sent':'✗ Failed'}</span></td>
+      <td><span class="badge ${r.redeemedAtTill?'badge-green':'badge-gray'}">${r.redeemedAtTill?'✓ Used':'Pending'}</span></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();showMsg(${i})">View</button></td>
+    </tr>`).join('');
+  }
+
+  function showMsg(i){
+    const r=window._redemptions[i];if(!r?.messageSent)return;
+    document.getElementById('msg-panel').style.display='block';
+    document.getElementById('msg-text').textContent=r.messageSent;
+    document.getElementById('msg-panel').scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  // ── FAILED SENDS ───────────────────────────────────────────────────
+  async function loadFailed(){
+    const items=await fetch('/api/redemptions/failed').then(r=>r.json());
+    const tb=document.getElementById('failed-tbody');
+    if(!items.length){tb.innerHTML=`<tr><td colspan="5"><div class="empty" style="color:var(--green)"><div class="empty-icon">✅</div><div class="empty-text">No failed sends</div><div class="empty-sub">All messages delivered</div></div></td></tr>`;return;}
+    tb.innerHTML=items.map(r=>`<tr>
+      <td class="mono">+${r.phoneNumber}</td>
+      <td class="mono" style="color:var(--text3)">#${r.campaignId}</td>
+      <td><span class="badge badge-amber">${r.sendAttempts}/3 attempts</span></td>
+      <td style="font-size:12px;color:var(--text2)">${fmt(r.lastSendAttempt)}</td>
+      <td><span class="badge ${r.sendAttempts>=3?'badge-red':'badge-amber'}">${r.sendAttempts>=3?'Max reached':'Will retry'}</span></td>
+    </tr>`).join('');
+  }
+
+  // ── MESSAGE PREVIEW ────────────────────────────────────────────────
+  async function loadPreview(){
+    const d=await fetch('/api/stats').then(r=>r.json()).catch(()=>({}));
+    const retailer=d.retailerName||'Shoprite';
+    const emoji=d.retailerEmoji||'🛒';
+    const expiry=d.expiryDate&&d.expiryDate!=='N/A'?d.expiryDate.substring(0,10):'2026-05-22';
+
+    let vouchers=[];
+    try{vouchers=await fetch('/api/vouchers').then(r=>r.json());}catch(e){}
+    const bundled=vouchers.filter(v=>v.includeInBundle).slice(0,5);
+
+    let codesSection='';
+    if(bundled.length){
+      // Group by denomination (simulate Randgo grouping)
+      const byDenom={};
+      bundled.forEach(v=>{
+        const d=v.discountSingle||0;
+        if(!byDenom[d])byDenom[d]=[];
+        byDenom[d].push(v);
+      });
+      let codeNum=1;
+      Object.entries(byDenom).forEach(([denom,items])=>{
+        const code=`XXXX XXXX XXXX ${String(1000+codeNum*111).slice(0,4)}`;
+        if(items.length===1){
+          codesSection+=`${items[0].emoji||'🛒'} *${items[0].voucherName||items[0].product}*  |  Save ${items[0].discountDisplay||'R'+denom}\n`;
+        }else{
+          codesSection+=`🏷️ *Bundle Code — covers:*\n${items.map(v=>`   ${v.emoji||'🛒'} ${v.voucherName||v.product}`).join('\n')}\n   💰 Total savings: ${items.map(v=>v.discountDisplay||'').join(' + ')}\n`;
+        }
+        codesSection+=`┌─────────────────────────┐\n│  \`${code}\`  │\n└─────────────────────────┘\n\n`;
+        codeNum++;
+      });
+    }else{
+      codesSection=`🛒 *Rainbow Chicken Polony 1kg*  |  Save R 10.00\n┌─────────────────────────┐\n│  \`9347 XXXX XXXX XXXX\`  │\n└─────────────────────────┘\n\n🏷️ *Bundle Code — covers:*\n   🍗 Rainbow Frozen Chicken Wings 1.5kg\n   🍗 Pieman's Frozen Steak & Kidney Pies 6pck\n   💰 Total savings: R 20.00 + R 20.00\n┌─────────────────────────┐\n│  \`9348 XXXX XXXX XXXX\`  │\n└─────────────────────────┘\n\n👶 *Purity Elizabeth Anne's Baby Oil 200ml*  |  Save R 5.00\n┌─────────────────────────┐\n│  \`9349 XXXX XXXX XXXX\`  │\n└─────────────────────────┘\n\n`;
+    }
+
+    document.getElementById('preview-msg').textContent=
+  `🎉 *Your FREE Grocery Coupons are here!*
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ${emoji} *Valid at: ${retailer}*
+  ⏰ *Expires: ${expiry}*
+
+  🧾 *YOUR COUPON CODES*
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ${codesSection}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  📋 *HOW TO REDEEM*
+
+  1️⃣  Add the qualifying product to your trolley
+  2️⃣  Tell the cashier you have a coupon
+  3️⃣  Show this message on your phone
+  4️⃣  Cashier scans or types the code
+  5️⃣  Discount applied instantly! ✅
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ℹ️ *IMPORTANT*
+
+  • Codes are unique to you — do not share
+  • Each code can only be used once
+  • Keep this message saved in your chat
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  _Powered by ACID LS Wallet_ 💛
+  _Reply *HELP* for support_`;
+  }
+
+  // ── COUPON EXPLORER ────────────────────────────────────────────────
+  async function loadCouponExplorer(){
+    let vouchers=[];
+    try{vouchers=await fetch('/api/vouchers').then(r=>r.json());}catch(e){}
+    const bundled=vouchers.filter(v=>v.includeInBundle);
+    const container=document.getElementById('sample-bundle');
+    if(!bundled.length){
+      container.innerHTML='<div class="empty"><div class="empty-icon">🎟️</div><div class="empty-text">No vouchers in bundle</div><div class="empty-sub">Run Sync → Sync Vouchers, then toggle vouchers to include in bundle</div></div>';
+      return;
+    }
+    // Simulate Randgo denomination grouping
+    const byDenom={};
+    bundled.forEach(v=>{
+      const d=v.discountSingle||0;
+      if(!byDenom[d])byDenom[d]=[];
+      byDenom[d].push(v);
+    });
+    let html='';
+    let codeNum=1;
+    const sampleCodes=['9347 1900 9545 4521','9348 4160 3536 3481','9349 4144 1908 3351','9350 2211 8823 1192','9351 7734 4490 2281'];
+    Object.entries(byDenom).sort((a,b)=>b[0]-a[0]).forEach(([denom,items])=>{
+      const code=sampleCodes[codeNum-1]||`9347 XXXX XXXX ${codeNum}000`;
+      const isBundle=items.length>1;
+      if(isBundle){
+        html+=`<div class="coupon-issued-item bundle">
+          <div class="ci-emoji">🏷️</div>
+          <div class="ci-info">
+            <div class="ci-name">Bundle Code — covers ${items.length} products</div>
+            <div class="ci-bundled">${items.map(v=>`${v.emoji||'🛒'} ${v.voucherName||v.product}`).join('<br/>')}</div>
+            <div class="ci-discount" style="margin-top:6px;">💰 Total savings: ${items.map(v=>v.discountDisplay||'').join(' + ')}</div>
+          </div>
+          <div class="ci-code">${code}</div>
+        </div>`;
+      }else{
+        const v=items[0];
+        html+=`<div class="coupon-issued-item">
+          <div class="ci-emoji">${v.emoji||'🛒'}</div>
+          <div class="ci-info">
+            <div class="ci-name">${v.voucherName||v.product}</div>
+            <div class="ci-discount">Save ${v.discountDisplay||'—'}</div>
+            <div class="ci-bundled" style="margin-top:2px">${v.vendorName||''}</div>
+          </div>
+          <div class="ci-code">${code}</div>
+        </div>`;
+      }
+      codeNum++;
+    });
+    html+=`<div class="alert info" style="margin-top:16px;">ℹ️ Sample codes shown above are for illustration. Real codes are unique 16-digit numbers issued by Randgo per customer phone number.</div>`;
+    container.innerHTML=html;
+  }
+
+  // ── RANDGO STATUS ──────────────────────────────────────────────────
+  async function loadRandgo(){
+    const s=await fetch('/api/randgo/status').then(r=>r.json()).catch(()=>({connected:false,error:'Request failed'}));
+    const el=document.getElementById('randgo-conn');
+    if(s.mockMode){
+      el.innerHTML='<div class="conn-dot mock"></div><div><div style="font-size:13px;color:var(--amber)">Mock Mode active</div><div style="font-size:12px;color:var(--text3);margin-top:2px">Set randgo.mock.mode=false to connect to live Randgo API</div></div>';
+    }else if(s.connected){
+      el.innerHTML='<div class="conn-dot live"></div><div><div style="font-size:13px;color:var(--green)">Connected to Randgo API ✅</div><div style="font-size:12px;color:var(--text3);margin-top:2px">Session token active</div></div>';
+    }else{
+      el.innerHTML=`<div class="conn-dot dead"></div><div><div style="font-size:13px;color:var(--red)">Not connected</div><div style="font-size:12px;color:var(--text3);margin-top:2px">${s.error||'Check credentials in application-dev.properties'}</div></div>`;
+    }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>
