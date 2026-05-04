@@ -267,7 +267,6 @@ public class CouponService {
 
     // ─── Retry Failed Sends ───────────────────────────────────────────────────
 
-    @Scheduled(fixedDelay = 300000) // every 5 minutes
     /**
      * Claims monthly coupon allocation for a registered ACID LS member.
      * Uses allocationKey = phone + "-MEMBER-" + YYYY-MM as the idempotency key
