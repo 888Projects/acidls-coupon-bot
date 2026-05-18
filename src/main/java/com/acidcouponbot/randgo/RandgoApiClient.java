@@ -101,7 +101,7 @@ public class RandgoApiClient {
 
         RandgoCouponCheckoutRequest request = RandgoCouponCheckoutRequest.builder()
                 .sessionToken(sessionManager.getSessionToken())
-                .primaryKeyName("Cell Phone")
+                .primaryKeyName("Cellphone")
                 .primaryKeyValue(phoneNumber)
                 .redemptionType("SMS")          // "SMS" confirmed working on QA
                 .issueExistingBasket(true)       // CRITICAL: return same codes if member already has a basket
@@ -150,7 +150,7 @@ public class RandgoApiClient {
         RandgoMemberImportRequest request = RandgoMemberImportRequest.builder()
                 .sessionToken(sessionManager.getSessionToken())
                 .clientSchemeGuid(clientSchemeGuid)
-                .primaryKeyName("Cell Phone")
+                .primaryKeyName("Cellphone")
                 .clientSchemeMemberIdentifierGuid(memberIdentifierGuid)
                 .members(List.of(
                         RandgoMemberImportRequest.Member.builder()
@@ -183,7 +183,7 @@ public class RandgoApiClient {
 
         Map response = callWithRetry("/api/Member/Import/Batch/GetByBatchGuid",
                 Map.of("SessionToken", sessionManager.getSessionToken(),
-                        "BatchGuid", batchGuid),
+                        "Guid", batchGuid),
                 Map.class);
 
         if (response != null) {
