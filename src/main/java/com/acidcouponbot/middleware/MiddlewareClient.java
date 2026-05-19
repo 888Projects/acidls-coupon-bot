@@ -52,13 +52,13 @@ public class MiddlewareClient {
 
         try {
             MiddlewareResponse resp = webClientBuilder.build()
-                .get()
-                .uri(middlewareUrl + "/internal/coupon/member-status?phone=" + phone)
-                .header("X-Internal-API-Key", internalApiKey)
-                .retrieve()
-                .bodyToMono(MiddlewareResponse.class)
-                .timeout(TIMEOUT)
-                .block();
+                    .get()
+                    .uri(middlewareUrl + "/internal/coupon/member-status?phone=" + phone)
+                    .header("X-Internal-API-Key", internalApiKey)
+                    .retrieve()
+                    .bodyToMono(MiddlewareResponse.class)
+                    .timeout(TIMEOUT)
+                    .block();
 
             if (resp == null || resp.getData() == null) {
                 log.warn("MIDDLEWARE_MEMBER_STATUS null response for +{}", phone);
@@ -67,25 +67,25 @@ public class MiddlewareClient {
 
             MiddlewareResponse.MemberStatusData data = resp.getData();
             log.info("MIDDLEWARE_MEMBER_STATUS phone={} isMember={} status={}",
-                phone, data.isMember(), data.getStatus());
+                    phone, data.isMember(), data.getStatus());
 
             return new MemberStatus(
-                phone,
-                data.isMember(),
-                data.isSuspended(),
-                data.getWalletId(),
-                data.getUserId(),
-                data.getCurrentPeriod(),
-                data.getStatus()
+                    phone,
+                    data.isMember(),
+                    data.isSuspended(),
+                    data.getWalletId(),
+                    data.getUserId(),
+                    data.getCurrentPeriod(),
+                    data.getStatus()
             );
 
         } catch (WebClientResponseException e) {
             log.warn("MIDDLEWARE_MEMBER_STATUS_HTTP_ERROR phone={} http={}",
-                phone, e.getStatusCode());
+                    phone, e.getStatusCode());
             return MemberStatus.nonMember(phone);
         } catch (Exception e) {
             log.warn("MIDDLEWARE_MEMBER_STATUS_ERROR phone={} err={}",
-                phone, e.getMessage());
+                    phone, e.getMessage());
             return MemberStatus.nonMember(phone); // fail open — never block coupons
         }
     }
@@ -101,7 +101,7 @@ public class MiddlewareClient {
         @Data
         @JsonIgnoreProperties(ignoreUnknown = true)
         public static class MemberStatusData {
-            @JsonProperty("isMember")      private boolean isMember;
+            @JsonProperty("member")        private boolean isMember;  // API returns "member" not "isMember"
             @JsonProperty("suspended")     private boolean suspended;
             @JsonProperty("walletId")      private String  walletId;
             @JsonProperty("userId")        private String  userId;
@@ -121,7 +121,7 @@ public class MiddlewareClient {
 
         public static MemberStatus nonMember(String phone) {
             return new MemberStatus(phone, false, false,
-                null, null, null, "NON_MEMBER");
+                    null, null, null, "NON_MEMBER");
         }
 
         /** Monthly coupon key — resets automatically each calendar month */
