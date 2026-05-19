@@ -94,7 +94,7 @@ public class ConversationService {
 
             if (memberStatus.suspended()) {
                 whatsAppService.sendMessage(phone,
-                        "⚠️ Your ACID LS wallet is currently suspended.\n"
+                        "⚠️ Your Tangiro wallet is currently suspended.\n"
                                 + "Please contact support to resolve this.");
                 return;
             }
@@ -109,7 +109,7 @@ public class ConversationService {
 
             String greeting = memberStatus.isMember()
                     ? "🎉 *Your Monthly Coupons*\n\nHi! Choose a category for your monthly bundle:"
-                    : "🎉 *ACID LS Coupons*\n\nChoose a category:";
+                    : "🎉 *Tangiro Coupons*\n\nChoose a category:";
 
             whatsAppService.sendMessage(phone,
                     greeting + "\n\n"
@@ -120,7 +120,7 @@ public class ConversationService {
 
         // Default — show menu
         whatsAppService.sendMessage(phone,
-                "👋 Hi! Welcome to *ACID LS Coupons* 🎉\n\n"
+                "👋 Hi! Welcome to *Tangiro Coupons* 🎉\n\n"
                         + "1️⃣ *Coupon* — Claim free coupons\n"
                         + "2️⃣ *History* — View your past coupons\n\n"
                         + "_Reply with a number or keyword._");

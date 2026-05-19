@@ -10,4 +10,5 @@ RUN addgroup -S acidls && adduser -S acidls -G acidls
 COPY --from=builder /app/target/*.jar app.jar
 USER acidls
 EXPOSE 8090
-ENTRYPOINT ["java", "-Xms128m", "-Xmx256m", "-jar", "app.jar"]
+ENV SERVER_PORT=8090
+ENTRYPOINT ["java", "-Xms128m", "-Xmx256m", "-Dserver.port=8090", "-jar", "app.jar"]

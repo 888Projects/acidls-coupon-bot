@@ -158,12 +158,13 @@ jobs:
               --restart unless-stopped \
               --network acidls \
               -p 8090:8090 \
+              --dns 8.8.8.8 --dns 8.8.4.4 \
               --env-file /opt/acid/coupon-bot/.env \
               ${{ env.IMAGE_NAME }}:latest
 
-            sleep 30
+            sleep 35
             curl -sf http://localhost:8090/actuator/health \
               && echo "✅ Coupon bot healthy" \
-              || echo "⚠️ Health check pending"
+              || echo "⚠️ Health check pending — check: docker logs acidls-coupon-bot --tail 30"
 
             docker image prune -f

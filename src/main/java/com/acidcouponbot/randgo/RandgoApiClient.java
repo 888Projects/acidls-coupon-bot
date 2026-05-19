@@ -358,7 +358,7 @@ public class RandgoApiClient {
         }).toList();
 
         basket.setCodes(codes);
-        response.setBaskets((List<RandgoCouponCheckoutResponse.Basket>) basket);
+        response.setBaskets(List.of(basket));
         return response;
     }
 }
