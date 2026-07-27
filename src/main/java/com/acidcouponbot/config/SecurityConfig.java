@@ -19,9 +19,10 @@ import org.springframework.security.web.SecurityFilterChain;
  *   1. Form login  — browser dashboard (login.html)
  *   2. HTTP Basic  — Postman / API clients
  *
- * Public endpoints:
+ * Public endpoints (to Spring Security — several are guarded by their own mechanism):
  *   /webhook/**   — Meta WhatsApp webhook (signature-verified internally)
  *   /api/health   — uptime monitoring
+ *   /internal/**  — service-to-service; guarded by X-Internal-Api-Key in the controller
  *   /h2-console   — H2 browser (dev profile only)
  *   Static assets — login.html, *.css, *.js, favicon
  */
@@ -41,6 +42,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.ignoringRequestMatchers(
                 "/webhook/**",
                 "/api/**",
+                "/internal/**",   // service-to-service; auth is X-Internal-Api-Key, not a browser session
                 "/h2-console/**",
                 "/login"
             ))
@@ -48,6 +50,10 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/webhook/**").permitAll()
                 .requestMatchers("/api/health").permitAll()
+                // Internal service-to-service API — reachable only over the acidls docker network
+                // (port not published). The controller enforces X-Internal-Api-Key itself, so Spring
+                // Security must NOT demand Basic auth here; permitAll lets the key check be the gate.
+                .requestMatchers("/internal/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers(
                     "/login.html", "/login", "/error",

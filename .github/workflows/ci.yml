@@ -157,13 +157,17 @@ jobs:
               --name acidls-coupon-bot \
               --restart unless-stopped \
               --network acidls \
-              -p 8090:8090 \
               --dns 8.8.8.8 --dns 8.8.4.4 \
               --env-file /opt/acid/coupon-bot/.env \
               ${{ env.IMAGE_NAME }}:latest
 
+            # Internal-only service: NOT published on the host (-p dropped). The gateway reaches it
+            # over the acidls network by name (http://acidls-coupon-bot:8090). Health-check from
+            # inside the network on the REAL endpoint — /actuator/health does not exist (no actuator
+            # on the classpath); /api/health is the permitAll liveness endpoint.
             sleep 35
-            curl -sf http://localhost:8090/actuator/health \
+            docker run --rm --network acidls curlimages/curl:latest \
+              -sf http://acidls-coupon-bot:8090/api/health \
               && echo "✅ Coupon bot healthy" \
               || echo "⚠️ Health check pending — check: docker logs acidls-coupon-bot --tail 30"
 
