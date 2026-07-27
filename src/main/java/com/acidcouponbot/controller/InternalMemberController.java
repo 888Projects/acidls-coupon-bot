@@ -37,14 +37,15 @@ public class InternalMemberController {
     /**
      * Ensure a RandGo member exists for {@code phone} (JIT provisioning).
      *
-     * <p>Delegates to {@link RandgoMemberService#ensureMemberRegistered(String)}, which is idempotent
-     * (memory + DB dedup — repeat calls are cheap) and reuses the DB-cached RandGo session token via
+     * <p>Delegates to {@link RandgoMemberService#ensureForSso(String)}, which is idempotent (memory + DB
+     * dedup — repeat calls are cheap) and reuses the DB-cached RandGo session token via
      * {@code RandgoSessionManager} — it NEVER triggers a fresh Login (RandGo's 1/day limit).
      *
-     * <p>Fail-open: {@code ensureMemberRegistered} already returns {@code true} even when the import
-     * fails, and this endpoint ALWAYS returns 200 (never a 5xx) so the caller's SSO flow is never
-     * blocked by us. The {@code ensured} flag is advisory — a {@code false} means "not confirmed",
-     * not "sign-in must stop".
+     * <p>Returns a {@code status} the gateway acts on: {@code ALREADY_REGISTERED}/{@code IMPORTED} → mint
+     * the SSO link; {@code IMPORT_PENDING} → first-time import still running, ask the user to retry in a
+     * moment; {@code FAILED} → fail-open (gateway mints anyway). {@code ensured} is kept as a convenience
+     * boolean (true only for ready states). This endpoint ALWAYS returns 200 (never a 5xx) so the
+     * caller's SSO flow is never blocked by us.
      */
     @PostMapping("/member/ensure")
     public ResponseEntity<Map<String, Object>> ensureMember(
@@ -62,17 +63,19 @@ public class InternalMemberController {
             return ResponseEntity.badRequest().body(Map.of("error", "phone required"));
         }
 
-        boolean ensured;
+        RandgoMemberService.EnsureStatus status;
         try {
-            ensured = randgoMemberService.ensureMemberRegistered(phone);
+            status = randgoMemberService.ensureForSso(phone);
         } catch (Exception e) {
-            // Defensive only — ensureMemberRegistered already swallows its own failures. We still
-            // never surface a 5xx to the SSO caller: return ensured=false and 200.
+            // Defensive only — ensureForSso already swallows its own failures. We still never surface a
+            // 5xx to the SSO caller: report FAILED (gateway fail-opens) and 200.
             log.error("MEMBER_ENSURE_ERROR phone={}: {}", mask(phone), e.getMessage());
-            ensured = false;
+            status = RandgoMemberService.EnsureStatus.FAILED;
         }
-        log.info("MEMBER_ENSURE phone={} ensured={}", mask(phone), ensured);
-        return ResponseEntity.ok(Map.of("ensured", ensured));
+        boolean ensured = status == RandgoMemberService.EnsureStatus.ALREADY_REGISTERED
+                || status == RandgoMemberService.EnsureStatus.IMPORTED;
+        log.info("MEMBER_ENSURE phone={} status={} ensured={}", mask(phone), status, ensured);
+        return ResponseEntity.ok(Map.of("status", status.name(), "ensured", ensured));
     }
 
     private static String mask(String phone) {

@@ -36,34 +36,52 @@ class InternalMemberControllerTest {
     }
 
     @Test
-    @DisplayName("valid key + phone → 200 ensured=true, delegates to ensureMemberRegistered")
+    @DisplayName("ALREADY_REGISTERED → 200 status=ALREADY_REGISTERED ensured=true, delegates to ensureForSso")
     void valid_ensuresMember() {
-        when(randgoMemberService.ensureMemberRegistered(PHONE)).thenReturn(true);
+        when(randgoMemberService.ensureForSso(PHONE))
+                .thenReturn(RandgoMemberService.EnsureStatus.ALREADY_REGISTERED);
 
         ResponseEntity<Map<String, Object>> resp =
                 controller.ensureMember(API_KEY, Map.of("phone", PHONE));
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resp.getBody()).containsEntry("ensured", true);
-        verify(randgoMemberService).ensureMemberRegistered(PHONE);
+        assertThat(resp.getBody()).containsEntry("status", "ALREADY_REGISTERED");
+        verify(randgoMemberService).ensureForSso(PHONE);
     }
 
     @Test
-    @DisplayName("import not confirmed (ensureMemberRegistered=false) → still 200, ensured=false (fail-open)")
-    void notConfirmed_still200() {
-        when(randgoMemberService.ensureMemberRegistered(PHONE)).thenReturn(false);
+    @DisplayName("IMPORTED → 200 status=IMPORTED ensured=true")
+    void imported_ready() {
+        when(randgoMemberService.ensureForSso(PHONE))
+                .thenReturn(RandgoMemberService.EnsureStatus.IMPORTED);
+
+        ResponseEntity<Map<String, Object>> resp =
+                controller.ensureMember(API_KEY, Map.of("phone", PHONE));
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resp.getBody()).containsEntry("ensured", true);
+        assertThat(resp.getBody()).containsEntry("status", "IMPORTED");
+    }
+
+    @Test
+    @DisplayName("IMPORT_PENDING → still 200, status=IMPORT_PENDING ensured=false (gateway asks retry)")
+    void pending_still200() {
+        when(randgoMemberService.ensureForSso(PHONE))
+                .thenReturn(RandgoMemberService.EnsureStatus.IMPORT_PENDING);
 
         ResponseEntity<Map<String, Object>> resp =
                 controller.ensureMember(API_KEY, Map.of("phone", PHONE));
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resp.getBody()).containsEntry("ensured", false);
+        assertThat(resp.getBody()).containsEntry("status", "IMPORT_PENDING");
     }
 
     @Test
-    @DisplayName("service throws → swallowed, 200 ensured=false (never a 5xx to the SSO caller)")
+    @DisplayName("service throws → swallowed, 200 status=FAILED ensured=false (never a 5xx to the SSO caller)")
     void serviceThrows_never5xx() {
-        when(randgoMemberService.ensureMemberRegistered(PHONE))
+        when(randgoMemberService.ensureForSso(PHONE))
                 .thenThrow(new RuntimeException("RandGo down"));
 
         ResponseEntity<Map<String, Object>> resp =
@@ -71,6 +89,7 @@ class InternalMemberControllerTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resp.getBody()).containsEntry("ensured", false);
+        assertThat(resp.getBody()).containsEntry("status", "FAILED");
     }
 
     @Test
@@ -80,7 +99,7 @@ class InternalMemberControllerTest {
                 controller.ensureMember("wrong-key", Map.of("phone", PHONE));
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        verify(randgoMemberService, never()).ensureMemberRegistered(anyString());
+        verify(randgoMemberService, never()).ensureForSso(anyString());
     }
 
     @Test
@@ -90,7 +109,7 @@ class InternalMemberControllerTest {
                 controller.ensureMember(null, Map.of("phone", PHONE));
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        verify(randgoMemberService, never()).ensureMemberRegistered(anyString());
+        verify(randgoMemberService, never()).ensureForSso(anyString());
     }
 
     @Test
@@ -102,7 +121,7 @@ class InternalMemberControllerTest {
                 controller.ensureMember("", Map.of("phone", PHONE));
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        verify(randgoMemberService, never()).ensureMemberRegistered(anyString());
+        verify(randgoMemberService, never()).ensureForSso(anyString());
     }
 
     @Test
@@ -112,6 +131,6 @@ class InternalMemberControllerTest {
                 controller.ensureMember(API_KEY, Map.of());
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        verify(randgoMemberService, never()).ensureMemberRegistered(anyString());
+        verify(randgoMemberService, never()).ensureForSso(anyString());
     }
 }
