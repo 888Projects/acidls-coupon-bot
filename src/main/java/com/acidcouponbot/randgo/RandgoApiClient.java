@@ -99,10 +99,15 @@ public class RandgoApiClient {
             return buildMockCheckoutResponse(phoneNumber, voucherGuids);
         }
 
+        // RandGo keys members by the LOCAL 0XXXXXXXXX MSISDN (same as the SSO NameID). Registration
+        // (importMember) normalizes to that form, so checkout MUST use the identical key or the lookup
+        // misses and no codes issue. Kept in lockstep via the shared normalizer.
+        String memberKey = toLocalMemberKey(phoneNumber);
+
         RandgoCouponCheckoutRequest request = RandgoCouponCheckoutRequest.builder()
                 .sessionToken(sessionManager.getSessionToken())
                 .primaryKeyName("Cellphone")
-                .primaryKeyValue(phoneNumber)
+                .primaryKeyValue(memberKey)
                 .redemptionType("SMS")          // "SMS" confirmed working on QA
                 .issueExistingBasket(true)       // CRITICAL: return same codes if member already has a basket
                 // Prevents duplicate issuance if dedup ever fails
@@ -147,6 +152,11 @@ public class RandgoApiClient {
             return "MOCK-BATCH-GUID-" + phoneNumber;
         }
 
+        // Store under the LOCAL 0XXXXXXXXX MSISDN so the member key matches the SSO assertion NameID
+        // (auth-service toLocalMsisdn). The gateway hands us 27... form; sending that verbatim is the
+        // root cause of the SSO login-wall for auto-provisioned users. Checkout uses the same key.
+        String memberKey = toLocalMemberKey(phoneNumber);
+
         RandgoMemberImportRequest request = RandgoMemberImportRequest.builder()
                 .sessionToken(sessionManager.getSessionToken())
                 .clientSchemeGuid(clientSchemeGuid)
@@ -154,8 +164,8 @@ public class RandgoApiClient {
                 .clientSchemeMemberIdentifierGuid(memberIdentifierGuid)
                 .members(List.of(
                         RandgoMemberImportRequest.Member.builder()
-                                .cellphone(phoneNumber)
-                                .uniqueUserKey(phoneNumber)
+                                .cellphone(memberKey)
+                                .uniqueUserKey(memberKey)
                                 .active(true)
                                 .registered(true)
                                 .build()
@@ -269,6 +279,34 @@ public class RandgoApiClient {
     private boolean isAfterHours() {
         int hour = LocalDateTime.now().getHour();
         return hour >= 23 || hour < 5;
+    }
+
+    /**
+     * Normalizes a phone number to the LOCAL South-African MSISDN {@code 0XXXXXXXXX} that RandGo stores
+     * members under and that the SSO assertion NameID uses (auth-service {@code toLocalMsisdn}).
+     *
+     * <p>This is the single choke point for the RandGo member key — BOTH member registration
+     * ({@code importMember}: Cellphone + UniqueUserKey) and coupon checkout ({@code checkoutCoupons}:
+     * PrimaryKeyValue) route through it, so registration and redemption stay in lockstep. Sending the
+     * gateway's {@code 27...} form verbatim is what put existing testers behind the SSO login-wall.
+     *
+     * <p>Robust to the shapes the phone can arrive in: {@code +27XXXXXXXXX}, {@code 27XXXXXXXXX}, or an
+     * already-local {@code 0XXXXXXXXX} (left unchanged). Only the RandGo key is normalized — local DB
+     * records, dedup caches and WhatsApp sends keep their existing {@code 27...} form.
+     */
+    static String toLocalMemberKey(String phone) {
+        if (phone == null) return null;
+        String digits = phone.replaceAll("\\D", "");     // drop +, spaces, punctuation
+        if (digits.startsWith("27") && digits.length() == 11) {
+            return "0" + digits.substring(2);            // 27XXXXXXXXX → 0XXXXXXXXX
+        }
+        if (digits.startsWith("0")) {
+            return digits;                               // already local — leave unchanged
+        }
+        if (digits.length() == 9) {
+            return "0" + digits;                         // bare national (no 0/27) → prepend 0
+        }
+        return digits;                                   // unknown shape → cleaned digits, unchanged
     }
 
     // ─── Mock Data ────────────────────────────────────────────────────────────
