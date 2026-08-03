@@ -156,6 +156,9 @@ public class RandgoApiClient {
         // (auth-service toLocalMsisdn). The gateway hands us 27... form; sending that verbatim is the
         // root cause of the SSO login-wall for auto-provisioned users. Checkout uses the same key.
         String memberKey = toLocalMemberKey(phoneNumber);
+        // Proves the ACTUAL key sent to RandGo (not the cosmetic "+27..." line in RandgoMemberService).
+        // If prod ever shows anything other than the local 0... form here, the SSO key mismatch is live.
+        log.info("Member/Import payload: raw={} → RandGo Cellphone/UniqueUserKey={}", phoneNumber, memberKey);
 
         RandgoMemberImportRequest request = RandgoMemberImportRequest.builder()
                 .sessionToken(sessionManager.getSessionToken())
