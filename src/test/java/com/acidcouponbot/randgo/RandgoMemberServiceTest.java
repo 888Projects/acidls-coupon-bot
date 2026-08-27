@@ -10,6 +10,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -42,6 +44,9 @@ class RandgoMemberServiceTest {
         ReflectionTestUtils.setField(service, "memberIdentifierGuid", GUID);
         ReflectionTestUtils.setField(service, "mockMode", false);
         ReflectionTestUtils.setField(service, "ssoPollAttempts", 1);
+        ReflectionTestUtils.setField(service, "checkoutPollAttempts", 1);
+        ReflectionTestUtils.setField(service, "firstPollDelayMs", 5L);   // keep the single poll's grace tiny
+        // minPollIntervalMs left 0 → effectiveMinPollIntervalMs() clamps to the 60_000ms floor (asserted below).
     }
 
     @Test
@@ -82,17 +87,29 @@ class RandgoMemberServiceTest {
     }
 
     @Test
-    @DisplayName("import not confirmed in budget → IMPORT_PENDING; retry re-checks the SAME batch → IMPORTED")
-    void pendingThenConverges() {
+    @DisplayName("not confirmed in budget → PENDING; an immediate retry is rate-guarded (no 2nd poll); after the 60s floor the SAME batch re-checks → IMPORTED")
+    void pendingThenGuardThenConverges() {
         when(redemptionRepository.existsByPhoneNumberAndMemberRegisteredInRandgoTrue(PHONE)).thenReturn(false);
         when(randgoApiClient.importMember(PHONE, GUID)).thenReturn("batch-1");
-        // First tap: not complete yet → PENDING. Second tap: complete → IMPORTED.
+        // The two ACTUAL polls: first (tap 1) not complete, second (post-floor tap) complete.
         when(randgoApiClient.isMemberImportComplete("batch-1")).thenReturn(false, true);
 
+        // Tap 1: submit + one poll → not complete → PENDING.
         assertThat(service.ensureForSso(PHONE)).isEqualTo(EnsureStatus.IMPORT_PENDING);
+
+        // Immediate retry: the per-batch 60s guard SKIPS the poll (no BatchGetByBatchGuid call) → still PENDING.
+        assertThat(service.ensureForSso(PHONE)).isEqualTo(EnsureStatus.IMPORT_PENDING);
+        verify(randgoApiClient, times(1)).isMemberImportComplete("batch-1");   // only tap 1 actually polled
+
+        // Simulate the 60s floor elapsing, then retry: the same in-flight batch is polled again → IMPORTED.
+        @SuppressWarnings("unchecked")
+        Map<String, Long> lastPolled =
+                (Map<String, Long>) ReflectionTestUtils.getField(service, "lastPolledAtByBatch");
+        lastPolled.put("batch-1", System.currentTimeMillis() - 61_000L);
+
         assertThat(service.ensureForSso(PHONE)).isEqualTo(EnsureStatus.IMPORTED);
 
-        // Only ONE import was submitted across both taps — the retry re-checked the in-flight batch.
+        // Still ONE import across every tap; exactly two real polls (tap 1 + post-floor), never a sub-minute call.
         verify(randgoApiClient, times(1)).importMember(PHONE, GUID);
         verify(randgoApiClient, times(2)).isMemberImportComplete("batch-1");
     }

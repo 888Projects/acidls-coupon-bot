@@ -8,10 +8,14 @@ import com.acidcouponbot.repository.RandgoVoucherRepository;
 import com.acidcouponbot.service.CouponCategory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -36,6 +40,64 @@ public class RandgoSyncService {
     private final RandgoApiClient randgoApiClient;
     private final RandgoVoucherRepository randgoVoucherRepository;
     private final CachedCouponCodeRepository cachedCouponCodeRepository;
+
+    /** Startup catch-up threshold: if the newest voucher last_synced is older than this many days, a monthly
+     *  sync was likely missed (container down at the cron time — Spring @Scheduled has no catch-up), so force
+     *  one. Default 25 (the monthly cron runs ~30 days apart, so 25 flags a genuinely missed cycle). */
+    @Value("${randgo.vouchers.catchup-max-age-days:25}")
+    private long catchupMaxAgeDays;
+
+    // ─── Startup catch-up for a MISSED monthly sync ───────────────────────────
+
+    /**
+     * Catch-up for a MISSED monthly voucher sync. Spring's {@code @Scheduled} cron has NO misfire recovery —
+     * if the container is down at 02:00 on the 1st, that run is silently skipped and the cached bundle can go
+     * stale (expired coupons served to users). On application-ready we check the newest {@code last_synced}
+     * in randgo_vouchers; if it is older than {@link #catchupMaxAgeDays} (or there are no vouchers at all) we
+     * run ONE VouchersGet to refresh the bundle. Logs loudly whether it ran, was skipped, or failed — and why.
+     *
+     * <p><b>Rate-limit guard (with an honest caveat).</b> This routes through {@link #syncVouchers()} →
+     * {@code RandgoApiClient.getVouchers()}, which enforces the 10-calls/week VouchersGet cap. That counter is
+     * IN-MEMORY and resets on restart, so it does NOT by itself stop a restart LOOP from calling VouchersGet
+     * each boot. The REAL restart-loop guard is this staleness check: a SUCCESSFUL sync freshens last_synced,
+     * so the next restart sees fresh data and skips. A sync that keeps FAILING (e.g. RandGo down) under a
+     * restart loop could still retry each boot — a durable weekly counter would need schema (out of scope).
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void catchUpMissedVoucherSyncOnStartup() {
+        try {
+            LocalDateTime newest = randgoVoucherRepository
+                    .findTopByLastSyncedNotNullOrderByLastSyncedDesc()
+                    .map(RandgoVoucher::getLastSynced)
+                    .orElse(null);
+
+            long ageDays = (newest == null) ? Long.MAX_VALUE
+                    : Duration.between(newest, LocalDateTime.now()).toDays();
+
+            if (newest != null && ageDays < catchupMaxAgeDays) {
+                log.info("STARTUP_VOUCHER_CATCHUP SKIPPED — newest last_synced={} is {} day(s) old (< {} threshold); bundle fresh, no VouchersGet",
+                        newest, ageDays, catchupMaxAgeDays);
+                return;
+            }
+
+            log.warn("STARTUP_VOUCHER_CATCHUP RUNNING — newest last_synced={} ({} day(s) old, threshold {}); a monthly sync was likely missed. Forcing ONE VouchersGet.",
+                    (newest == null ? "NONE" : newest),
+                    (ageDays == Long.MAX_VALUE ? "∞" : ageDays), catchupMaxAgeDays);
+
+            VoucherSyncResult result = syncVouchers();
+
+            if (result.success()) {
+                log.warn("STARTUP_VOUCHER_CATCHUP DONE — refreshed {} coupon(s); bundle current", result.count());
+            } else {
+                // Includes the 10/week rate-limit case (syncVouchers swallows the limiter's exception into a
+                // failure result). Loud, but non-fatal — boot continues on the last cached bundle.
+                log.error("STARTUP_VOUCHER_CATCHUP NOT DONE — {}", result.message());
+            }
+        } catch (Exception e) {
+            // Never let a catch-up problem break startup.
+            log.error("STARTUP_VOUCHER_CATCHUP ERROR (skipped) — {}", e.getMessage(), e);
+        }
+    }
 
     // ─── Monthly Vouchers Sync ────────────────────────────────────────────────
 

@@ -15,4 +15,7 @@ public interface RandgoVoucherRepository extends JpaRepository<RandgoVoucher, Lo
     Optional<RandgoVoucher> findByVoucherGuid(String voucherGuid);
 
     long countByActiveTrue();
+
+    /** Newest-synced voucher (ignoring null last_synced) — for the startup missed-sync catch-up. */
+    Optional<RandgoVoucher> findTopByLastSyncedNotNullOrderByLastSyncedDesc();
 }

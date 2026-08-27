@@ -51,15 +51,42 @@ public class RandgoMemberService {
     // SAME batch instead of submitting a fresh import, so a first-time member converges to IMPORTED.
     private final ConcurrentHashMap<String, String> pendingBatches = new ConcurrentHashMap<>();
 
-    private static final int MAX_POLL_ATTEMPTS = 10;   // full budget for the blocking checkout path
-    private static final long POLL_INTERVAL_MS = 2000; // 2 seconds
+    /**
+     * RandGo caps BatchGetByBatchGuid at 1 call per MINUTE per batch (exceeding it suspends the account for
+     * 2h on Live). The knobs below decouple "grace before the first poll" from "spacing between later polls"
+     * so the user-facing wait stays short WITHOUT ever breaching that per-batch limit. All @Value so they can
+     * be tuned via env without a redeploy.
+     */
 
-    /** Poll attempts for the JIT SSO path. Sized so a first-time import usually completes IN-BUDGET →
-     *  IMPORTED (single-tap sign-in behind the gateway's holding message), while staying comfortably under
-     *  the gateway's response timeout so the status is returned rather than cut off. 3 × 2s ≈ up to ~7s of
-     *  polling; if the import genuinely exceeds it we return IMPORT_PENDING (rare) and the user retries. */
-    @Value("${randgo.member.sso-poll-attempts:3}")
+    /** Grace before the FIRST poll of a freshly-created batch. Safe at any value — the first call is within
+     *  the 1/min budget. ~4s catches the normal case (prod: imports complete on attempt 1) in a single poll. */
+    @Value("${randgo.member.first-poll-delay-ms:4000}")
+    private long firstPollDelayMs;
+
+    /** Minimum spacing between polls of the SAME batch, enforced ACROSS separate ensure() calls (retries),
+     *  not just within one loop. FLOORED at 60_000ms in code ({@link #effectiveMinPollIntervalMs()}) so a
+     *  misconfiguration can never breach RandGo's documented 1-call-per-minute-per-batch limit. */
+    @Value("${randgo.member.min-poll-interval-ms:60000}")
+    private long minPollIntervalMs;
+
+    /** Poll attempts for the JIT SSO path. Default 1: prod logs show first-time imports completing on the
+     *  first poll, so one poll after {@link #firstPollDelayMs} catches the normal case; anything slower
+     *  returns IMPORT_PENDING and the user retries (the gateway already shows a "tap again" message). */
+    @Value("${randgo.member.sso-poll-attempts:1}")
     private int ssoPollAttempts;
+
+    /** Poll attempts for the checkout path. Default 1: this path runs synchronously on the Meta webhook
+     *  thread (WebhookController) whose ~20s delivery timeout forbids long blocking, and its ensure result
+     *  is not gated on (checkout with issueExistingBasket=true is the real backstop). One quick poll keeps
+     *  webhook latency low; the per-batch floor still applies. */
+    @Value("${randgo.member.checkout-poll-attempts:1}")
+    private int checkoutPollAttempts;
+
+    /** Last-poll timestamp (epoch ms) per batch GUID — enforces the 60s floor ACROSS ensure() calls, so a
+     *  fast retry re-checking an in-flight batch cannot breach the 1/min limit. In-memory (like the maps
+     *  above); a restart loses it, which is safe because a fresh import then creates a NEW batch = a NEW
+     *  1/min window. */
+    private final ConcurrentHashMap<String, Long> lastPolledAtByBatch = new ConcurrentHashMap<>();
 
     /** Outcome of a member-ensure attempt, so callers can act on ready vs still-importing vs failed. */
     public enum EnsureStatus { ALREADY_REGISTERED, IMPORTED, IMPORT_PENDING, FAILED }
@@ -73,7 +100,7 @@ public class RandgoMemberService {
      * @param phoneNumber WhatsApp number e.g. "27831234567"
      */
     public boolean ensureMemberRegistered(String phoneNumber) {
-        return ensureInternal(phoneNumber, MAX_POLL_ATTEMPTS) != EnsureStatus.FAILED;
+        return ensureInternal(phoneNumber, checkoutPollAttempts) != EnsureStatus.FAILED;
     }
 
     /**
@@ -154,27 +181,67 @@ public class RandgoMemberService {
      * {@link #POLL_INTERVAL_MS}). From Randgo doc: monitor batches to ensure completion.
      */
     private boolean pollBatchUntilComplete(String batchGuid, int maxAttempts) {
+        long minInterval = effectiveMinPollIntervalMs();
+
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                Thread.sleep(POLL_INTERVAL_MS);
+            Long last = lastPolledAtByBatch.get(batchGuid);
 
-                boolean complete = randgoApiClient.isMemberImportComplete(batchGuid);
-                if (complete) {
-                    log.info("Batch {} completed on attempt {}", batchGuid, attempt);
-                    return true;
+            if (last == null) {
+                // Brand-new batch: a short grace before the first (rate-safe) poll.
+                if (!sleepMs(firstPollDelayMs)) return false;   // interrupted
+            } else {
+                long sinceLast = System.currentTimeMillis() - last;
+                if (sinceLast < minInterval) {
+                    // Too soon since this batch's previous poll (a fast retry, or a loop tick). NEVER breach
+                    // the 1/min limit: skip the call and report not-yet-complete so the caller returns
+                    // IMPORT_PENDING and the user retries later. Do NOT update the timestamp (no poll happened).
+                    log.info("BATCH_POLL_SKIP batch={} last poll {}ms ago (< {}ms floor) — skipping call, pending",
+                            batchGuid, sinceLast, minInterval);
+                    return false;
                 }
-
-                log.debug("Batch {} not yet complete (attempt {}/{})", batchGuid, attempt, maxAttempts);
-
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            } catch (Exception e) {
-                log.warn("Error polling batch {}: {}", batchGuid, e.getMessage());
+                // Enough time has elapsed across calls — safe to poll now.
             }
+
+            lastPolledAtByBatch.put(batchGuid, System.currentTimeMillis());
+            boolean complete;
+            try {
+                complete = randgoApiClient.isMemberImportComplete(batchGuid);
+            } catch (Exception e) {
+                // Mirrors the prior swallow-and-continue intent, but we stop here (a failed poll must not
+                // spin the loop into another sub-minute call).
+                log.warn("Error polling batch {}: {}", batchGuid, e.getMessage());
+                return false;
+            }
+
+            if (complete) {
+                lastPolledAtByBatch.remove(batchGuid);   // completed → never poll it again (a documented failure)
+                log.info("Batch {} completed on attempt {}", batchGuid, attempt);
+                return true;
+            }
+            log.debug("Batch {} not yet complete (attempt {}/{})", batchGuid, attempt, maxAttempts);
+
+            // If this loop has another attempt, wait the full floor before the next poll of the SAME batch.
+            if (attempt < maxAttempts && !sleepMs(minInterval)) return false;
         }
 
         return false;
+    }
+
+    /** The 60s-per-batch floor is non-negotiable (RandGo suspends on breach), so clamp regardless of config. */
+    private long effectiveMinPollIntervalMs() {
+        return Math.max(minPollIntervalMs, 60_000L);
+    }
+
+    /** Sleep, returning false if interrupted (caller then aborts the poll as not-complete). */
+    private boolean sleepMs(long ms) {
+        if (ms <= 0) return true;
+        try {
+            Thread.sleep(ms);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     /**
