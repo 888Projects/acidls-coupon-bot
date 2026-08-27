@@ -51,6 +51,46 @@ public class RandgoSessionManager {
     private static final String MOCK_TOKEN = "MOCK-SESSION-TOKEN-DEV-MODE";
 
     /**
+     * Thread-scoped campaign mode. When set on a thread, {@link #forceRelogin()} on THAT thread refuses to
+     * log in (throws {@link CampaignLoginSuppressedException}) so a bulk campaign can never spend the daily
+     * Login. Only the campaign-runner thread sets this; live SSO on other threads keeps its normal
+     * 401→relogin recovery untouched.
+     */
+    private final ThreadLocal<Boolean> campaignMode = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
+    /** Mark the CURRENT thread as in campaign mode (suppresses forceRelogin on this thread only). */
+    public void enterCampaignMode() { campaignMode.set(Boolean.TRUE); }
+
+    /** Clear campaign mode on the current thread. */
+    public void exitCampaignMode() { campaignMode.remove(); }
+
+    public boolean isCampaignMode() { return Boolean.TRUE.equals(campaignMode.get()); }
+
+    /**
+     * Read-only pre-flight for the campaign runner: is a usable cached token present WITHOUT logging in?
+     * NEVER calls {@link #login()}. Logs which branch it took — importantly, in mock mode it returns true
+     * with no real token, so a misconfigured prod running in mock mode would also pass here; the explicit
+     * log line is the operator's signal to check which branch was taken.
+     */
+    public boolean hasValidCachedToken() {
+        if (mockMode) {
+            log.warn("CAMPAIGN_PREFLIGHT token=OK branch=MOCK_MODE — no real RandGo token in play "
+                    + "(dev convenience; a prod misconfigured into mock mode would ALSO pass this check)");
+            return true;
+        }
+        Optional<RandgoSession> existing = sessionRepository.findTopByActiveTrueOrderByCreatedAtDesc();
+        boolean valid = existing.isPresent() && !existing.get().isExpired();
+        if (valid) {
+            log.info("CAMPAIGN_PREFLIGHT token=OK branch=LIVE — cached token valid (expires {})",
+                    existing.get().getExpiresAt());
+        } else {
+            log.warn("CAMPAIGN_PREFLIGHT token=MISSING branch=LIVE — no valid cached token (present={})",
+                    existing.isPresent());
+        }
+        return valid;
+    }
+
+    /**
      * Returns a valid SessionToken.
      * Uses cached token if valid, otherwise logs in.
      */
@@ -81,6 +121,14 @@ public class RandgoSessionManager {
      * Invalidates existing session and creates new one.
      */
     public String forceRelogin() {
+        // Campaign guard (thread-scoped): during a bulk campaign a 401 must NOT trigger a Login — a second
+        // Login in a day suspends the production account. Refuse and signal the runner to pause instead.
+        if (isCampaignMode()) {
+            log.warn("CAMPAIGN_LOGIN_SUPPRESSED — 401 on the campaign thread; refusing to re-login "
+                    + "(would risk the 1/day Login cap and suspend the account). Pausing the run.");
+            throw new CampaignLoginSuppressedException(
+                    "RandGo returned 401 during the campaign; Login suppressed to protect the daily cap.");
+        }
         log.warn("Forcing Randgo re-login due to 401 response");
 
         // Invalidate existing sessions

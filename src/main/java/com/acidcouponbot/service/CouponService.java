@@ -66,6 +66,29 @@ public class CouponService {
             boolean usedFallback
     ) {}
 
+    /**
+     * The current coupon bundle's voucher GUIDs — the SAME selection {@link #claimCoupons} issues: enabled
+     * vouchers (active + include_in_bundle), display-ordered, capped to the active campaign's bundleSize
+     * (default 5). Exposed for the bulk campaign runner so it issues EXACTLY what the live claim path issues.
+     * Read-only; does not change how the bundle is chosen. Returns empty if there is no active campaign or no
+     * enabled vouchers (the runner treats empty as a hard stop rather than issuing nothing).
+     */
+    @Transactional(readOnly = true)
+    public List<String> selectBundleVoucherGuids() {
+        Optional<Campaign> campaignOpt = campaignRepository.findByActiveTrue();
+        if (campaignOpt.isEmpty()) return List.of();
+
+        List<RandgoVoucher> allBundled = randgoVoucherRepository
+                .findByActiveTrueAndIncludeInBundleTrueOrderByDisplayOrderAsc();
+        if (allBundled.isEmpty()) return List.of();
+
+        int bundleLimit = campaignOpt.get().getBundleSize() > 0 ? campaignOpt.get().getBundleSize() : 5;
+        List<RandgoVoucher> vouchers = allBundled.size() > bundleLimit
+                ? allBundled.subList(0, bundleLimit)
+                : allBundled;
+        return vouchers.stream().map(RandgoVoucher::getVoucherGuid).toList();
+    }
+
     // ─── Main Claim Method ────────────────────────────────────────────────────
 
     @Transactional

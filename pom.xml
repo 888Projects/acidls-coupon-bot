@@ -141,6 +141,8 @@
                                 <exclude>**/GlobalExceptionHandler.class</exclude>
                                 <!-- Admin controller — manual testing only -->
                                 <exclude>**/AdminController.class</exclude>
+                                <!-- Campaign controller — thin HTTP wiring; logic covered in CampaignRunner/Service tests -->
+                                <exclude>**/CampaignController.class</exclude>
                                 <!-- Middleware HTTP client — requires live middleware -->
                                 <exclude>**/middleware/MiddlewareClient.class</exclude>
                                 <exclude>**/middleware/MiddlewareClient$*.class</exclude>

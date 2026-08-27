@@ -188,6 +188,50 @@ public class RandgoApiClient {
     }
 
     /**
+     * Batched variant of {@link #importMember(String, String)} for the bulk campaign — imports MANY members
+     * in ONE Member/Import call and returns the batch GUID. The single-member method is intentionally left
+     * untouched (live SSO depends on it). Same key normalisation ({@link #toLocalMemberKey}) so campaign
+     * members match the SSO NameID and the checkout key.
+     *
+     * <p>Routes through {@link #callWithRetry} exactly like the single-member path, so a 401 in campaign mode
+     * surfaces as a {@link CampaignLoginSuppressedException} (the session manager refuses to re-authenticate
+     * on the campaign thread) rather than a silent re-login.
+     */
+    public String importMembers(List<String> phoneNumbers, String memberIdentifierGuid) {
+        if (mockMode) {
+            log.info("MOCK: Batch-registering {} members in Randgo", phoneNumbers.size());
+            return "MOCK-BATCH-" + phoneNumbers.size();
+        }
+
+        List<RandgoMemberImportRequest.Member> members = phoneNumbers.stream()
+                .map(RandgoApiClient::toLocalMemberKey)
+                .map(key -> RandgoMemberImportRequest.Member.builder()
+                        .cellphone(key)
+                        .uniqueUserKey(key)
+                        .active(true)
+                        .registered(true)
+                        .build())
+                .toList();
+
+        RandgoMemberImportRequest request = RandgoMemberImportRequest.builder()
+                .sessionToken(sessionManager.getSessionToken())
+                .clientSchemeGuid(clientSchemeGuid)
+                .primaryKeyName("Cellphone")
+                .clientSchemeMemberIdentifierGuid(memberIdentifierGuid)
+                .members(members)
+                .build();
+
+        Map response = callWithRetry("/api/Member/Import", request, Map.class);
+        if (response != null) {
+            Map batch = (Map) response.get("Batch");
+            if (batch != null) {
+                return (String) batch.get("Guid");
+            }
+        }
+        return null;
+    }
+
+    /**
      * POST /api/Member/Import/Batch/GetByBatchGuid
      * Checks if a member import batch has completed.
      */
