@@ -221,7 +221,24 @@ public class RandgoApiClient {
                 .members(members)
                 .build();
 
-        Map response = callWithRetry("/api/Member/Import", request, Map.class);
+        // Request log — mirrors the single-member importMember payload line so a FAILING batch shows the
+        // EXACT keys sent to RandGo (Cellphone/UniqueUserKey are the local 0… form), and the error body
+        // below shows WHY RandGo rejected it.
+        log.info("Member/Import BATCH payload: n={} primaryKeyName=Cellphone clientSchemeGuid={} "
+                        + "memberIdentifierGuid={} cellphones={}",
+                members.size(), clientSchemeGuid, memberIdentifierGuid,
+                members.stream().map(RandgoMemberImportRequest.Member::getCellphone).toList());
+
+        Map response;
+        try {
+            response = callWithRetry("/api/Member/Import", request, Map.class);
+        } catch (WebClientResponseException e) {
+            // callWithRetry only handles 401 — a 400/502 etc. propagates. Log RandGo's reason immediately
+            // (the response body), then rethrow so the caller's existing handling is unchanged.
+            log.error("Member/Import BATCH FAILED status={} body={}",
+                    e.getStatusCode(), e.getResponseBodyAsString());
+            throw e;
+        }
         if (response != null) {
             Map batch = (Map) response.get("Batch");
             if (batch != null) {

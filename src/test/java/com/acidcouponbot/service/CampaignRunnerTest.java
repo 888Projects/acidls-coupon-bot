@@ -49,6 +49,7 @@ import static org.mockito.Mockito.when;
 @TestPropertySource(properties = {
         "campaign.enabled=true",
         "campaign.import-batch-size=1000",
+        "campaign.import-batch-delay-ms=0",
         "campaign.checkout-delay-ms=0",
         "campaign.batch-poll-interval-ms=1",
         "campaign.batch-poll-max-attempts=3",
@@ -180,6 +181,26 @@ class CampaignRunnerTest {
     }
 
     // ── Resume ────────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("resume RE-SUBMITS IMPORT_FAILED recipients as a fresh import batch (they are not skipped)")
+    void resume_reimportsImportFailed() {
+        // Mirrors run 2: some IMPORTED already, some left IMPORT_FAILED by a rejected batch.
+        seed("27830000001", RecipientStatus.IMPORTED);
+        seed("27830000002", RecipientStatus.IMPORT_FAILED);
+        seed("27830000003", RecipientStatus.IMPORT_FAILED);
+        runs.findById(runId).ifPresent(r -> { r.setStatus(CampaignStatus.PAUSED); runs.save(r); });
+        when(randgoApiClient.importMembers(anyList(), eq("test-guid"))).thenReturn("batch-retry");
+        when(randgoApiClient.isMemberImportComplete("batch-retry")).thenReturn(true);
+        when(randgoApiClient.checkoutCoupons(anyString(), anyList())).thenReturn(withCodes("CODE-R"));
+
+        runner.runToCompletion(runId, false);
+
+        // The two IMPORT_FAILED were re-submitted (fresh batch) and carried through to ISSUED.
+        verify(randgoApiClient).importMembers(anyList(), eq("test-guid"));
+        assertThat(recipients.countByCampaignRunIdAndStatus(runId, RecipientStatus.ISSUED)).isEqualTo(3);
+        assertThat(recipients.countByCampaignRunIdAndStatus(runId, RecipientStatus.IMPORT_FAILED)).isZero();
+    }
 
     @Test
     @DisplayName("resume issues IMPORTED recipients and NEVER re-touches ISSUED")

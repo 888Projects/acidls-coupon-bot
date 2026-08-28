@@ -55,8 +55,14 @@ public class CampaignRunner {
     @Value("${campaign.enabled:false}")
     private boolean enabled;
 
-    @Value("${campaign.import-batch-size:1000}")
+    @Value("${campaign.import-batch-size:500}")
     private int importBatchSize;
+
+    /** Wait between submitting one import batch and the next. RandGo's import queue rejects back-to-back
+     *  submissions (observed in run 2: alternating 400/502 returning in 2–3s), so space submissions out.
+     *  This is ON TOP OF the per-batch poll — it applies even when a batch fails fast. */
+    @Value("${campaign.import-batch-delay-ms:30000}")
+    private long importBatchDelayMs;
 
     @Value("${campaign.checkout-delay-ms:1000}")
     private long checkoutDelayMs;
@@ -191,6 +197,15 @@ public class CampaignRunner {
 
         for (int i = 0; i < toImport.size(); i += importBatchSize) {
             checkPauseRequested();
+            if (i > 0) {
+                // Space out submissions — RandGo's import queue rejects back-to-back batches. Applied before
+                // the next submit regardless of whether the previous batch was confirmed or failed fast.
+                log.info("CAMPAIGN_IMPORT run={} waiting {}ms before submitting the next batch",
+                        run.getId(), importBatchDelayMs);
+                if (!sleep(importBatchDelayMs)) {
+                    throw new CampaignPausedException("interrupted during import-batch delay — pausing");
+                }
+            }
             List<CampaignRecipient> chunk =
                     new ArrayList<>(toImport.subList(i, Math.min(i + importBatchSize, toImport.size())));
             importChunk(run, chunk);
