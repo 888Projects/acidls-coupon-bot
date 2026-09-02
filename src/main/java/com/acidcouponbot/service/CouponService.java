@@ -441,7 +441,7 @@ public class CouponService {
 
         // ── Footer ──────────────────────────────────────────────────────────
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("_Powered by Tangiro Wallet_ 💛\n");
+        sb.append("_Powered by ACiD Wallet_ 💛\n");
         sb.append("_Reply *HELP* for support_");
 
         return sb.toString();
