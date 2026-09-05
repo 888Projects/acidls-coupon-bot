@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
@@ -129,6 +130,27 @@ public class RandgoSessionManager {
             throw new CampaignLoginSuppressedException(
                     "RandGo returned 401 during the campaign; Login suppressed to protect the daily cap.");
         }
+
+        // Daily-Login guard (live paths, incl. SSO ensureMember): a 401 while a Login already happened within
+        // the last 24h must NOT trigger a SECOND Login — that is the exact chain that suspends the RandGo
+        // account ~2h for EVERYONE while the user gets a working-looking link that dead-ends. Refuse; the
+        // caller degrades to FAILED (the gateway is READY-only, so no link is minted and the user is asked to
+        // retry). getSessionToken()'s expiry-based Login — the one legitimate daily login — is NOT guarded
+        // here, so a genuine daily refresh still works.
+        if (!mockMode) {
+            Optional<RandgoSession> lastLogin = sessionRepository.findTopByOrderByCreatedAtDesc();
+            if (lastLogin.isPresent() && lastLogin.get().getCreatedAt() != null
+                    && lastLogin.get().getCreatedAt().isAfter(LocalDateTime.now().minusHours(24))) {
+                LocalDateTime last = lastLogin.get().getCreatedAt();
+                log.warn("RANDGO_DAILY_LOGIN_EXHAUSTED — RandGo returned 401 but the last Login was at {} "
+                                + "(< 24h ago); REFUSING a second Login to avoid the ~2h account suspension. "
+                                + "Coupons recover automatically once the 24h Login window clears.", last);
+                throw new DailyLoginExhaustedException(
+                        "RandGo 401 but the daily Login was already spent at " + last
+                                + "; refusing a second Login to protect the 1/day cap.");
+            }
+        }
+
         log.warn("Forcing Randgo re-login due to 401 response");
 
         // Invalidate existing sessions
